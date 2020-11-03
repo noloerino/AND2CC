@@ -3,10 +3,12 @@
 
 use panic_halt as _;
 
+use cortex_m::asm;
+use cortex_m_rt::entry;
+
+#[entry]
 fn main() -> ! {
     loop {
         // your code goes here
     }
 }
-
-
