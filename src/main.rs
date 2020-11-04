@@ -8,6 +8,7 @@ use embedded_hal::digital::v2::InputPin;
 use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::prelude::_embedded_hal_blocking_delay_DelayMs;
 use kobuki::actuator::Actuator;
+use kobuki::sensors::SensorPoller;
 use kobuki::utilities;
 use nrf52832_hal as hal;
 use nrf52832_hal::delay;
@@ -34,7 +35,6 @@ fn main() -> ! {
         port0.p0_06.into_push_pull_output(Level::High).degrade(),
         p.UARTE0,
     );
-    let mut actuator = Actuator::new(&mut uart);
     let mut state = DriveState::Off;
     rprintln!("Blinky button/drive demo starting");
     let mut ctr: u32 = 0;
@@ -45,6 +45,8 @@ fn main() -> ! {
         } else {
             led.set_high().unwrap();
         }
+        let sensors = SensorPoller::poll(&mut uart).unwrap();
+        let mut actuator = Actuator::new(&mut uart);
         match state {
             DriveState::Off => {
                 if button.is_low().unwrap() {

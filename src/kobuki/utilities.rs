@@ -26,7 +26,7 @@ pub fn init_uart0(
     )
 }
 
-pub fn check_sum(buf: &[u8]) -> u8 {
+pub fn checksum(buf: &[u8]) -> u8 {
     let mut cs: u8 = 0;
     for i in 2..buf.len() {
         cs ^= buf[i];

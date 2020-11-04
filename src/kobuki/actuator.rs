@@ -8,11 +8,13 @@ use crate::kobuki::utilities;
 use nrf52832_hal::uarte;
 use nrf52832_hal::Uarte;
 
+/// Provides access to functions that the robot sends over UART, passed in via the ::new function.
+/// To allow usage of the UART instance by other structs, simply allow the Actuator to go out of
+/// scope, which releases the mutable borrow.
 pub struct Actuator<'a, T: uarte::Instance> {
     serial: &'a mut Uarte<T>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub enum Sound {
     On,
@@ -37,7 +39,7 @@ impl<'a, T: uarte::Instance> Actuator<'a, T> {
         write_data[1] = 0x55;
         write_data[2] = len;
         write_data[3..(3 + len as usize)].copy_from_slice(payload);
-        write_data[3 + len as usize] = utilities::check_sum(&write_data[..(3 + len) as usize]);
+        write_data[3 + len as usize] = utilities::checksum(&write_data[..(3 + len) as usize]);
         self.serial.write(&write_data[..(4 + len as usize)])
     }
 
