@@ -17,7 +17,7 @@ dependencies = [
  "cortex-m-rt",
  "embedded-hal",
  "nrf52832-hal",
- "panic-halt",
+ "panic-rtt-core",
  "rtt-target",
 ]
 
@@ -199,10 +199,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "panic-halt"
-version = "0.2.0"
+name = "panic-rtt-core"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de96540e0ebde571dc55c73d60ef407c653844e6f9a1e2fdbd40c07b9252d812"
+checksum = "c7d594793fb22ce40aafef91094337a8ea1e185e9a7ece6db2781f5ad78ffacb"
+dependencies = [
+ "cortex-m",
+ "rtt-target",
+]
 
 [[package]]
 name = "proc-macro2"
