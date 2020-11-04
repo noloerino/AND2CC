@@ -9,7 +9,7 @@ flash:
 clean:
 	cargo clean
 
-GDB ?= arm-none-eabi-gdb
+GDB ?= arm-none-eabi-gdb -tui
 TARGET ?= target/thumbv7em-none-eabihf/debug/and_2_cc
 
 UNAME_S := $(shell uname -s)
@@ -21,5 +21,5 @@ ifeq ($(UNAME_S),Darwin)
 else
 	terminal -e openocd
 endif
-	$(GDB) $(TARGET)
+	$(GDB) -x .gdbinit $(TARGET)
 
