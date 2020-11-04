@@ -1,5 +1,6 @@
 //! Various sensor definitions.
 //! See https://github.com/lab11/buckler/tree/master/software/libraries/kobuki
+//! Some additional convenience functions are also provided.
 
 use crate::kobuki::utilities;
 use core::convert::TryInto;
@@ -21,7 +22,7 @@ pub struct BumpsAndWheelDrops {
     bump_right: bool,
 }
 
-#[derive(Default)]
+#[derive(Default, Copy, Clone)]
 #[repr(C)]
 pub struct Buttons {
     b0: bool,
@@ -159,6 +160,34 @@ pub struct Sensors {
     pub uid: [u32; 3],
     pub general_input: Input,
     pub controller_gain: Gain,
+    // Private state used to debounce buttons
+    prev_buttons: Buttons,
+}
+
+impl Sensors {
+    pub fn is_bump(&self) -> bool {
+        self.bumps_wheel_drops.bump_left
+            || self.bumps_wheel_drops.bump_center
+            || self.bumps_wheel_drops.bump_right
+    }
+
+    pub fn is_button_pressed(&mut self) -> bool {
+        let mut result = false;
+        let curr_b0 = self.buttons.b0;
+        if curr_b0 && self.prev_buttons.b0 != curr_b0 {
+            result = true;
+        }
+        let curr_b1 = self.buttons.b1;
+        if curr_b1 && self.prev_buttons.b1 != curr_b1 {
+            result = true;
+        }
+        let curr_b2 = self.buttons.b2;
+        if curr_b2 && self.prev_buttons.b2 != curr_b2 {
+            result = true;
+        }
+        self.prev_buttons = self.buttons;
+        result
+    }
 }
 
 // === POLLING ===
@@ -241,8 +270,7 @@ impl<'a, T: uarte::Instance> SensorPoller<'a, T> {
         panic!("Fatal error reading UART feedback packet");
     }
 
-    fn parse_sensor_packet(&self, packet: &[u8]) -> Sensors {
-        let mut sensors = Sensors::default();
+    fn parse_sensor_packet(&self, packet: &[u8], sensors: &mut Sensors) {
         let payload_len: usize = packet[2] as usize;
         let mut i: usize = 3;
         while i < payload_len + 3 {
@@ -341,14 +369,13 @@ impl<'a, T: uarte::Instance> SensorPoller<'a, T> {
                 _ => {}
             }
         }
-        sensors
     }
 
-    /// Sends a request for sensor data over UART.
-    pub fn poll(serial: &'a mut Uarte<T>) -> Result<Sensors, uarte::Error> {
+    /// Sends a request for sensor data over UART and updates the Sensors object in-place.
+    pub fn poll(serial: &'a mut Uarte<T>, sensors: &mut Sensors) -> Result<(), uarte::Error> {
         let mut poller = SensorPoller { serial };
         let mut packet: [u8; 140] = [0; 140];
         poller.read_feedback_packet(&mut packet)?;
-        Ok(poller.parse_sensor_packet(&packet))
+        Ok(poller.parse_sensor_packet(&packet, sensors))
     }
 }
