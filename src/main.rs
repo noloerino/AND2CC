@@ -24,10 +24,10 @@ fn main() -> ! {
     let button = port0.p0_28.into_pullup_input();
     let mut led = port0.p0_23.into_push_pull_output(Level::Low);
     let c = hal::pac::CorePeripherals::take().unwrap();
-    let mut delay = delay::Delay::new(c.SYST);
+    // let mut delay = delay::Delay::new(c.SYST);
     rprintln!("Blinky button demo starting");
     loop {
-        delay.delay_ms(100u16);
+        // delay.delay_ms(100u16);
         if button.is_high().unwrap() {
             led.set_low().unwrap();
         } else {
