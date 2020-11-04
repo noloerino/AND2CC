@@ -4,7 +4,7 @@
 mod error;
 mod kobuki;
 
-use embedded_hal::digital::v2::InputPin;
+// use embedded_hal::digital::v2::InputPin;
 // use embedded_hal::digital::v2::OutputPin;
 use core::default;
 use embedded_hal::prelude::_embedded_hal_blocking_delay_DelayMs;
@@ -42,16 +42,20 @@ enum DriveDirection {
 
 fn measure_distance(curr_encoder: u16, prev_encoder: u16, direction: DriveDirection) -> f32 {
     const CONVERSION: f32 = 0.0006108;
-    let ticks: u16 = if curr_encoder >= prev_encoder {
-        curr_encoder - prev_encoder
-    } else {
-        curr_encoder + (u16::MAX - prev_encoder)
-    };
+    // rprintln!("encoder: {} -> {}", prev_encoder, curr_encoder);
     CONVERSION
         * (if direction == DriveDirection::Forward {
-            ticks as f32
+            (if curr_encoder >= prev_encoder {
+                curr_encoder - prev_encoder
+            } else {
+                curr_encoder + (u16::MAX - prev_encoder)
+            }) as f32
         } else {
-            -(ticks as f32)
+            -((if curr_encoder <= prev_encoder {
+                prev_encoder - curr_encoder
+            } else {
+                prev_encoder + (u16::MAX - curr_encoder)
+            }) as f32)
         })
 }
 
@@ -60,7 +64,7 @@ fn main() -> ! {
     rtt_init_print!();
     let p = hal::pac::Peripherals::take().unwrap();
     let port0 = hal::gpio::p0::Parts::new(p.P0);
-    let button = port0.p0_28.into_pullup_input();
+    // let button = port0.p0_28.into_pullup_input();
     // let mut led = port0.p0_23.into_push_pull_output(Level::Low);
     let c = hal::pac::CorePeripherals::take().unwrap();
     let mut delay = delay::Delay::new(c.SYST);
@@ -78,9 +82,10 @@ fn main() -> ! {
         delay.delay_ms(1u16);
         SensorPoller::poll(&mut uart, &mut sensors).unwrap();
         let mut actuator = Actuator::new(&mut uart);
+        let is_button_pressed = sensors.is_button_pressed();
         match state {
             DriveState::Off => {
-                if button.is_low().unwrap() {
+                if is_button_pressed {
                     state = DriveState::Forward {
                         last_encoder: sensors.left_wheel_encoder,
                         distance_traveled: 0.0,
@@ -94,15 +99,19 @@ fn main() -> ! {
                 last_encoder,
                 mut distance_traveled,
             } => {
-                if button.is_low().unwrap() {
+                if is_button_pressed {
                     state = DriveState::Off;
                     rprintln!("Drive off");
                 } else if sensors.is_bump() {
+                    rprintln!("Bump! (timestamp {})", sensors.timestamp);
+                    actuator.drive_direct(0, 0).unwrap();
+                    // Add slight delay and repoll to let wheel stop
+                    delay.delay_ms(100u16);
+                    SensorPoller::poll(&mut uart, &mut sensors).unwrap();
                     state = DriveState::Reverse {
                         last_encoder: sensors.left_wheel_encoder,
                         distance_traveled: 0.0,
                     };
-                    rprintln!("Bump! (timestamp {})", sensors.timestamp);
                 } else {
                     let curr_encoder = sensors.left_wheel_encoder;
                     distance_traveled +=
@@ -123,7 +132,7 @@ fn main() -> ! {
                 last_encoder,
                 mut distance_traveled,
             } => {
-                if button.is_low().unwrap() {
+                if is_button_pressed {
                     state = DriveState::Off;
                     rprintln!("Drive off");
                 } else {

@@ -216,12 +216,12 @@ impl<'a, T: uarte::Instance> SensorPoller<'a, T> {
                     // Unlike original C code, we read both bytes at once
                     let status = self.serial.read(&mut header_buf);
                     if let Err(e) = status {
-                        rprintln!("UART error reading kobuki header: {:#?}", e);
+                        rprintln!("[Sensors] UART error reading kobuki header: {:#?}", e);
                         aa_count += 1;
                         if aa_count < 20 {
-                            rprintln!("\ttrying again...");
+                            rprintln!("[Sensors] \ttrying again...");
                         } else {
-                            rprintln!("Failed to recieve from robot.\n\tIs robot powered on?\n\tTry unplugging buckler from USB and power cycle robot");
+                            rprintln!("[Sensors] Failed to recieve from robot.\n\tIs robot powered on?\n\tTry unplugging buckler from USB and power cycle robot");
                             return Err(e);
                         }
                     }
@@ -236,7 +236,7 @@ impl<'a, T: uarte::Instance> SensorPoller<'a, T> {
                     self.serial.read(&mut payload_size_buf)?;
                     if packet_buffer.len() < (payload_size_buf[0] + 3) as usize {
                         rprintln!(
-                            "While reading payload size, payload size was {} but len was {}",
+                            "[Sensors] While reading payload size, payload size was {} but len was {}",
                             payload_size_buf[0],
                             packet_buffer.len(),
                         );
@@ -252,17 +252,21 @@ impl<'a, T: uarte::Instance> SensorPoller<'a, T> {
                 ReadChecksum => {
                     packet_buffer[0..2].copy_from_slice(&header_buf);
                     packet_buffer[2] = payload_size_buf[0];
-                    let calculated_checksum = utilities::checksum(packet_buffer);
+                    let calculated_checksum =
+                        utilities::checksum(&packet_buffer[..payload_size_buf[0] as usize + 3]);
                     let byte_buffer = packet_buffer[payload_size_buf[0] as usize + 3];
                     if calculated_checksum == byte_buffer {
                         return Ok(());
                     } else {
                         state = WaitUntilAa;
                         if num_checksum_failures == 3 {
-                            panic!("Too many checksum failures while reading UART feedback packet");
+                            panic!(
+                                "Too many checksum failures while reading UART feedback packet (expected {}, got {})", 
+                                byte_buffer, calculated_checksum
+                            );
                         }
                         num_checksum_failures += 1;
-                        rprintln!("Checksum fails: {}", num_checksum_failures);
+                        rprintln!("[Sensors] Checksum fails: {}", num_checksum_failures);
                     }
                 }
             }
@@ -285,7 +289,7 @@ impl<'a, T: uarte::Instance> SensorPoller<'a, T> {
                     // so we'll just check here to make sure it's the right length
                     if sub_payload_length == 0x0F {
                         sensors.timestamp =
-                            u16::from_le_bytes(packet[i + 2..i + 3].try_into().unwrap());
+                            u16::from_le_bytes(packet[i + 2..i + 4].try_into().unwrap());
                         sensors.bumps_wheel_drops.bump_right = packet[i + 4] & 0x01 != 0;
                         sensors.bumps_wheel_drops.bump_center = packet[i + 4] & 0x02 != 0;
                         sensors.bumps_wheel_drops.bump_left = packet[i + 4] & 0x04 != 0;
@@ -297,9 +301,9 @@ impl<'a, T: uarte::Instance> SensorPoller<'a, T> {
                         sensors.cliff_left = (packet[i + 6] & 0x04) != 0;
 
                         sensors.left_wheel_encoder =
-                            u16::from_le_bytes(packet[i + 7..i + 8].try_into().unwrap());
+                            u16::from_le_bytes(packet[i + 7..i + 9].try_into().unwrap());
                         sensors.right_wheel_encoder =
-                            u16::from_le_bytes(packet[i + 9..i + 10].try_into().unwrap());
+                            u16::from_le_bytes(packet[i + 9..i + 11].try_into().unwrap());
 
                         sensors.left_wheel_pwm = packet[i + 11] as i8;
                         sensors.right_wheel_pwm = packet[i + 12] as i8;
@@ -342,9 +346,9 @@ impl<'a, T: uarte::Instance> SensorPoller<'a, T> {
                     // inertial sensor data
                     if sub_payload_length == 0x07 {
                         sensors.angle =
-                            i16::from_le_bytes(packet[i + 2..i + 3].try_into().unwrap());
+                            i16::from_le_bytes(packet[i + 2..i + 4].try_into().unwrap());
                         sensors.angle_rate =
-                            i16::from_le_bytes(packet[i + 4..i + 5].try_into().unwrap());
+                            i16::from_le_bytes(packet[i + 4..i + 6].try_into().unwrap());
                         i += sub_payload_length + 2;
                     } else {
                         i += payload_len + 3;
@@ -354,11 +358,11 @@ impl<'a, T: uarte::Instance> SensorPoller<'a, T> {
                     // cliff sensor data
                     if sub_payload_length == 0x06 {
                         sensors.cliff_right_signal =
-                            u16::from_le_bytes(packet[i + 2..i + 3].try_into().unwrap());
+                            u16::from_le_bytes(packet[i + 2..i + 4].try_into().unwrap());
                         sensors.cliff_center_signal =
-                            u16::from_le_bytes(packet[i + 4..i + 5].try_into().unwrap());
+                            u16::from_le_bytes(packet[i + 4..i + 6].try_into().unwrap());
                         sensors.cliff_left_signal =
-                            u16::from_le_bytes(packet[i + 6..i + 7].try_into().unwrap());
+                            u16::from_le_bytes(packet[i + 6..i + 8].try_into().unwrap());
                         i += sub_payload_length + 2;
                     } else {
                         i += payload_len + 3;

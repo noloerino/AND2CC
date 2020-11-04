@@ -21,5 +21,7 @@ fn HardFault(ef: &ExceptionFrame) -> ! {
 
 // TODO configure to blink LEDs
 fn blink_loop() -> ! {
-    loop {}
+    loop {
+        cortex_m::asm::bkpt();
+    }
 }
