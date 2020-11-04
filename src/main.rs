@@ -1,6 +1,7 @@
 #![no_main]
 #![no_std]
 
+mod error;
 mod kobuki;
 
 use embedded_hal::digital::v2::InputPin;
@@ -11,23 +12,7 @@ use kobuki::utilities;
 use nrf52832_hal as hal;
 use nrf52832_hal::delay;
 use nrf52832_hal::gpio::Level;
-use panic_rtt_core as _;
 use rtt_target::{rprintln, rtt_init_print};
-
-/*
-#[panic_handler] // panicking behavior
-fn panic(e: &core::panic::PanicInfo) -> ! {
-    loop {
-        rprintln!("Unhandled panic; stopping");
-        rprintln!(
-            "{:?} @ {:?}",
-            e.payload().downcast_ref::<&str>(),
-            e.location().unwrap()
-        );
-        cortex_m::asm::bkpt();
-    }
-}
-*/
 
 enum DriveState {
     Off,

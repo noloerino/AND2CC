@@ -17,7 +17,6 @@ dependencies = [
  "cortex-m-rt",
  "embedded-hal",
  "nrf52832-hal",
- "panic-rtt-core",
  "rtt-target",
 ]
 
@@ -196,16 +195,6 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "vcell",
-]
-
-[[package]]
-name = "panic-rtt-core"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7d594793fb22ce40aafef91094337a8ea1e185e9a7ece6db2781f5ad78ffacb"
-dependencies = [
- "cortex-m",
- "rtt-target",
 ]
 
 [[package]]

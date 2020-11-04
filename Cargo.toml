@@ -9,7 +9,6 @@ edition = "2018"
 [dependencies]
 cortex-m = "0.6.0"
 cortex-m-rt = "0.6.10"
-panic-rtt-core = "0.2.1"
 rtt-target = { version = "0.2.0", features = ["cortex-m"] }
 nrf52832-hal = { version = "0.11.0", features = ["rt"] }
 # alloc-cortex-m = "0.4.0"
