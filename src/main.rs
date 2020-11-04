@@ -29,6 +29,12 @@ fn panic(e: &core::panic::PanicInfo) -> ! {
 }
 */
 
+enum DriveState {
+    Off,
+    TurnCcw,
+    Drive,
+}
+
 #[cortex_m_rt::entry]
 fn main() -> ! {
     rtt_init_print!();
@@ -44,16 +50,55 @@ fn main() -> ! {
         p.UARTE0,
     );
     let mut actuator = Actuator::new(&mut uart);
-    rprintln!("Blinky button demo starting");
+    let mut state = DriveState::Off;
+    rprintln!("Blinky button/drive demo starting");
+    let mut ctr: u32 = 0;
     loop {
         delay.delay_ms(100u16);
-        if button.is_high().unwrap() {
+        if button.is_low().unwrap() {
             led.set_low().unwrap();
         } else {
             led.set_high().unwrap();
         }
-        if let Err(e) = actuator.drive_direct(100, 100) {
-            rprintln!("Error in drive: {:?}", e);
+        match state {
+            DriveState::Off => {
+                if button.is_low().unwrap() {
+                    state = DriveState::Drive;
+                    ctr = 0;
+                    rprintln!("Begin drive");
+                }
+                actuator.drive_direct(0, 0).unwrap();
+            }
+            DriveState::Drive => {
+                if button.is_low().unwrap() {
+                    state = DriveState::Off;
+                    rprintln!("Drive off");
+                } else if ctr == 10 {
+                    state = DriveState::TurnCcw;
+                    ctr = 0;
+                } else {
+                    ctr += 1;
+                    rprintln!("drive ctr: {}", ctr);
+                    if let Err(e) = actuator.drive_direct(100, 100) {
+                        rprintln!("Error attempting drive: {:?}", e);
+                    }
+                }
+            }
+            DriveState::TurnCcw => {
+                if button.is_low().unwrap() {
+                    state = DriveState::Off;
+                    rprintln!("Drive off");
+                } else if ctr == 10 {
+                    state = DriveState::Drive;
+                    ctr = 0;
+                } else {
+                    ctr += 1;
+                    rprintln!("turn ctr: {}", ctr);
+                    if let Err(e) = actuator.drive_direct(-100, 100) {
+                        rprintln!("Error attempting drive: {:?}", e);
+                    }
+                }
+            }
         }
     }
 }
