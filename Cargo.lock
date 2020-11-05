@@ -16,6 +16,7 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "embedded-hal",
+ "lsm9ds1",
  "nrf52832-hal",
  "rtt-target",
 ]
@@ -140,6 +141,15 @@ checksum = "501466ecc8a30d1d3b7fc9229b122b2ce8ed6e9d9223f1138d4babb253e51817"
 dependencies = [
  "typenum",
  "version_check",
+]
+
+[[package]]
+name = "lsm9ds1"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1400229713fa9137a61e89fc3b384a53fef1df948b720ab4eb57a04f2669a5f7"
+dependencies = [
+ "embedded-hal",
 ]
 
 [[package]]

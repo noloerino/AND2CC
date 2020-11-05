@@ -3,6 +3,7 @@
 
 mod error;
 mod kobuki;
+mod lcd_display;
 
 // use embedded_hal::digital::v2::InputPin;
 // use embedded_hal::digital::v2::OutputPin;
@@ -11,6 +12,7 @@ use embedded_hal::prelude::_embedded_hal_blocking_delay_DelayMs;
 use kobuki::actuator::Actuator;
 use kobuki::sensors::{SensorPoller, Sensors};
 use kobuki::utilities;
+use lcd_display::LcdDisplay;
 use nrf52832_hal as hal;
 use nrf52832_hal::delay;
 use nrf52832_hal::gpio::Level;
@@ -73,13 +75,28 @@ fn main() -> ! {
         port0.p0_06.into_push_pull_output(Level::High).degrade(),
         p.UARTE0,
     );
+    let mut spi1 = hal::spim::Spim::new(
+        p.SPIM1,
+        hal::spim::Pins {
+            // https://github.com/lab11/buckler/blob/master/software/boards/buckler_revC/buckler.h
+            sck: port0.p0_17.into_push_pull_output(Level::Low).degrade(),
+            mosi: Some(port0.p0_15.into_push_pull_output(Level::Low).degrade()),
+            miso: Some(port0.p0_16.into_floating_input().degrade()),
+        },
+        hal::spim::Frequency::M4,
+        hal::spim::MODE_2,
+        0,
+    );
+    let mut spi_cs = port0.p0_18.into_push_pull_output(Level::Low).degrade();
+    let mut display = LcdDisplay::new(&mut spi1, &mut spi_cs, &mut delay).unwrap();
+    display.write_row_0("Hello, Human!").unwrap();
     let mut sensors = Sensors::default();
     let mut state = DriveState::default();
     rprintln!("Initialization complete");
     const DRIVE_DIST: f32 = 0.5;
     const REVERSE_DIST: f32 = -0.1;
     loop {
-        delay.delay_ms(1u16);
+        delay.delay_ms(1u8);
         SensorPoller::poll(&mut uart, &mut sensors).unwrap();
         let mut actuator = Actuator::new(&mut uart);
         let is_button_pressed = sensors.is_button_pressed();
