@@ -1,18 +1,18 @@
 #![no_main]
 #![no_std]
 
+mod buckler;
 mod error;
 mod kobuki;
-mod lcd_display;
 
 // use embedded_hal::digital::v2::InputPin;
 // use embedded_hal::digital::v2::OutputPin;
+use buckler::lcd_display::LcdDisplay;
 use core::default;
 use embedded_hal::prelude::_embedded_hal_blocking_delay_DelayMs;
 use kobuki::actuator::Actuator;
 use kobuki::sensors::{SensorPoller, Sensors};
 use kobuki::utilities;
-use lcd_display::LcdDisplay;
 use nrf52832_hal as hal;
 use nrf52832_hal::delay;
 use nrf52832_hal::gpio::Level;
