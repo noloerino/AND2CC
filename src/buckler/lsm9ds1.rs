@@ -2,12 +2,17 @@
 //! https://github.com/lab11/buckler/blob/master/software/libraries/lsm9ds1/lsm9ds1.h
 use lsm9ds1 as imu_mod;
 use lsm9ds1::LSM9DS1Init;
-use nrf52832_hal::{twim, Twim};
+use nrf52832_hal::{timer, twim, Twim};
 
-pub struct Imu<I: twim::Instance> {
-    instance: imu_mod::LSM9DS1<imu_mod::interface::I2cInterface<Twim<I>>>,
+pub struct Imu<S: twim::Instance, T: timer::Instance> {
+    instance: imu_mod::LSM9DS1<imu_mod::interface::I2cInterface<Twim<S>>>,
+    timer: T,
+    integration_started: bool,
+    integrated_angle: ImuMeasure,
+    prev_timer_val: u32,
 }
 
+#[derive(Debug, Copy, Clone)]
 pub struct ImuMeasure {
     pub x_axis: f32,
     pub y_axis: f32,
@@ -24,8 +29,8 @@ impl ImuMeasure {
     }
 }
 
-impl<I: twim::Instance> Imu<I> {
-    pub fn new(twi0: Twim<I>) -> Self {
+impl<S: twim::Instance, T: timer::Instance> Imu<S, T> {
+    pub fn new(twi0: Twim<S>, timer: T) -> Self {
         let mut instance = IMU_CONF.with_interface(imu_mod::interface::I2cInterface::init(
             twi0,
             imu_mod::interface::i2c::AgAddress::_1,  // 0x6A
@@ -34,7 +39,13 @@ impl<I: twim::Instance> Imu<I> {
         instance.begin_accel().unwrap();
         instance.begin_gyro().unwrap();
         instance.begin_mag().unwrap();
-        Imu { instance }
+        Imu {
+            instance,
+            timer,
+            integration_started: false,
+            integrated_angle: ImuMeasure::from_triple((0.0, 0.0, 0.0)),
+            prev_timer_val: 0,
+        }
     }
 
     /// Read all three axes on the accelerometer
@@ -61,9 +72,46 @@ impl<I: twim::Instance> Imu<I> {
     }
 
     // TODO add type states for integration
-    /// Beings integration on the gyro. Panics if integration already started.
+    /// Begins integration on the gyro. Panics if integration already started.
     pub fn start_gyro_integration(&mut self) {
-        unimplemented!()
+        assert!(!self.integration_started);
+        self.integration_started = true;
+        self.integrated_angle = ImuMeasure::from_triple((0.0, 0.0, 0.0));
+        self.timer.disable_interrupt();
+        self.timer.set_oneshot();
+        self.timer.timer_start(u32::MAX);
+        self.prev_timer_val = 0;
+    }
+
+    /// Read the value of the integrated gyro
+    ///
+    /// Note: this function also performs the integration and needs to be called
+    /// periodically
+    ///
+    /// Return the integrated value as floating point in degrees
+    pub fn read_gyro_integration(
+        &mut self,
+    ) -> Result<ImuMeasure, imu_mod::interface::i2c::Error<twim::Error>> {
+        let curr_timer_val = self.timer.read_counter();
+        let time_diff = (curr_timer_val.wrapping_sub(self.prev_timer_val) as f32) / 1000000.0;
+        self.prev_timer_val = curr_timer_val;
+        let measure = self.read_gyro()?;
+        if measure.z_axis > 0.5 || measure.z_axis < -0.5 {
+            self.integrated_angle.z_axis += measure.z_axis * time_diff;
+        }
+        if measure.x_axis > 0.5 || measure.x_axis < -0.5 {
+            self.integrated_angle.x_axis += measure.x_axis * time_diff;
+        }
+        if measure.y_axis > 0.5 || measure.y_axis < -0.5 {
+            self.integrated_angle.y_axis += measure.y_axis * time_diff;
+        }
+        return Ok(self.integrated_angle);
+    }
+
+    /// Stops integration on the gyro.
+    pub fn stop_gyro_integration(&mut self) {
+        self.timer.timer_cancel();
+        self.integration_started = false;
     }
 }
 

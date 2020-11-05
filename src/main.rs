@@ -29,6 +29,7 @@ enum DriveState {
         last_encoder: u16,
         distance_traveled: f32,
     },
+    TurnCcw,
 }
 
 impl default::Default for DriveState {
@@ -101,12 +102,13 @@ fn main() -> ! {
         },
         hal::twim::Frequency::K100,
     );
-    let mut imu = Imu::new(twi0);
+    let mut imu = Imu::new(twi0, p.TIMER1);
     let mut sensors = Sensors::default();
     let mut state = DriveState::default();
     rprintln!("Initialization complete");
     const DRIVE_DIST: f32 = 0.5;
     const REVERSE_DIST: f32 = -0.1;
+    const DRIVE_SPEED: i16 = 70;
     loop {
         delay.delay_ms(1u8);
         SensorPoller::poll(&mut uart, &mut sensors).unwrap();
@@ -114,6 +116,14 @@ fn main() -> ! {
         // rprintln!("x_accel: {:.2}", accel.x_axis);
         let mut actuator = Actuator::new(&mut uart);
         let is_button_pressed = sensors.is_button_pressed();
+        display
+            .write_row_0(match state {
+                DriveState::Off => "Off",
+                DriveState::Forward { .. } => "Forward",
+                DriveState::Reverse { .. } => "Reverse",
+                DriveState::TurnCcw => "Turn CCW",
+            })
+            .unwrap();
         match state {
             DriveState::Off => {
                 if is_button_pressed {
@@ -121,7 +131,6 @@ fn main() -> ! {
                         last_encoder: sensors.left_wheel_encoder,
                         distance_traveled: 0.0,
                     };
-                    rprintln!("Begin drive");
                 } else {
                     actuator.drive_direct(0, 0).unwrap();
                 }
@@ -132,7 +141,6 @@ fn main() -> ! {
             } => {
                 if is_button_pressed {
                     state = DriveState::Off;
-                    rprintln!("Drive off");
                 } else if sensors.is_bump() {
                     rprintln!("Bump! (timestamp {})", sensors.timestamp);
                     actuator.drive_direct(0, 0).unwrap();
@@ -148,10 +156,10 @@ fn main() -> ! {
                     distance_traveled +=
                         measure_distance(curr_encoder, last_encoder, DriveDirection::Forward);
                     if distance_traveled >= DRIVE_DIST {
-                        state = DriveState::Off;
-                        rprintln!("Traveled {}, stopping", distance_traveled);
+                        state = DriveState::TurnCcw;
+                        imu.start_gyro_integration();
                     } else {
-                        actuator.drive_direct(100, 100).unwrap();
+                        actuator.drive_direct(DRIVE_SPEED, DRIVE_SPEED).unwrap();
                         state = DriveState::Forward {
                             last_encoder: curr_encoder,
                             distance_traveled,
@@ -165,33 +173,50 @@ fn main() -> ! {
             } => {
                 if is_button_pressed {
                     state = DriveState::Off;
-                    rprintln!("Drive off");
                 } else {
                     let curr_encoder = sensors.left_wheel_encoder;
                     distance_traveled +=
                         measure_distance(curr_encoder, last_encoder, DriveDirection::Reverse);
                     if distance_traveled <= REVERSE_DIST {
                         state = DriveState::Off;
-                        rprintln!("Backed up {}, stopping", distance_traveled);
                     } else {
-                        actuator.drive_direct(-100, -100).unwrap();
+                        actuator.drive_direct(-DRIVE_SPEED, -DRIVE_SPEED).unwrap();
                         state = DriveState::Reverse {
                             last_encoder: curr_encoder,
                             distance_traveled,
                         }
                     }
                 }
-            } // DriveState::TurnCcw => {
-              //     if button.is_low().unwrap() {
-              //         state = DriveState::Off;
-              //         rprintln!("Drive off");
-              //     } else {
-              //         rprintln!("turn ctr: {}", ctr);
-              //         if let Err(e) = actuator.drive_direct(-100, 100) {
-              //             rprintln!("Error attempting drive: {:?}", e);
-              //         }
-              //     }
-              // }
+            }
+            DriveState::TurnCcw => {
+                let angle = fabs(imu.read_gyro_integration().unwrap().z_axis);
+                rprintln!("angle turned: {}", angle);
+                if is_button_pressed {
+                    state = DriveState::Off;
+                    imu.stop_gyro_integration();
+                } else if angle >= 90.0 {
+                    actuator.drive_direct(0, 0).unwrap();
+                    // Add slight delay and repoll to let wheel stop
+                    delay.delay_ms(100u16);
+                    SensorPoller::poll(&mut uart, &mut sensors).unwrap();
+                    state = DriveState::Forward {
+                        last_encoder: sensors.left_wheel_encoder,
+                        distance_traveled: 0.0,
+                    };
+                    imu.stop_gyro_integration();
+                } else {
+                    actuator.drive_direct(DRIVE_SPEED, -DRIVE_SPEED).unwrap();
+                }
+            }
         }
+    }
+}
+
+/// Apparently f32::abs is part of std, not core.
+fn fabs(n: f32) -> f32 {
+    if n >= 0.0 {
+        n
+    } else {
+        -n
     }
 }
