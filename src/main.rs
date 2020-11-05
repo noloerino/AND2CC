@@ -8,6 +8,7 @@ mod kobuki;
 // use embedded_hal::digital::v2::InputPin;
 // use embedded_hal::digital::v2::OutputPin;
 use buckler::lcd_display::LcdDisplay;
+use buckler::lsm9ds1::Imu;
 use core::default;
 use embedded_hal::prelude::_embedded_hal_blocking_delay_DelayMs;
 use kobuki::actuator::Actuator;
@@ -87,9 +88,20 @@ fn main() -> ! {
         hal::spim::MODE_2,
         0,
     );
+    // Initialize display
     let mut spi_cs = port0.p0_18.into_push_pull_output(Level::Low).degrade();
     let mut display = LcdDisplay::new(&mut spi1, &mut spi_cs, &mut delay).unwrap();
     display.write_row_0("Hello, Human!").unwrap();
+    // Initialize IMU
+    let twi0 = hal::twim::Twim::new(
+        p.TWIM0,
+        hal::twim::Pins {
+            scl: port0.p0_19.into_floating_input().degrade(),
+            sda: port0.p0_20.into_floating_input().degrade(),
+        },
+        hal::twim::Frequency::K100,
+    );
+    let mut imu = Imu::new(twi0);
     let mut sensors = Sensors::default();
     let mut state = DriveState::default();
     rprintln!("Initialization complete");
@@ -98,6 +110,8 @@ fn main() -> ! {
     loop {
         delay.delay_ms(1u8);
         SensorPoller::poll(&mut uart, &mut sensors).unwrap();
+        // let accel = imu.read_accel().unwrap();
+        // rprintln!("x_accel: {:.2}", accel.x_axis);
         let mut actuator = Actuator::new(&mut uart);
         let is_button_pressed = sensors.is_button_pressed();
         match state {
