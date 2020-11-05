@@ -92,7 +92,8 @@ fn main() -> ! {
     // Initialize display
     let mut spi_cs = port0.p0_18.into_push_pull_output(Level::Low).degrade();
     let mut display = LcdDisplay::new(&mut spi1, &mut spi_cs, &mut delay).unwrap();
-    display.write_row_0("Hello, Human!").unwrap();
+    display.write_row_0("Initializing...").unwrap();
+    display.write_row_1("Blocking on base").unwrap();
     // Initialize IMU
     let twi0 = hal::twim::Twim::new(
         p.TWIM0,
@@ -105,10 +106,15 @@ fn main() -> ! {
     let mut imu = Imu::new(twi0, p.TIMER1);
     let mut sensors = Sensors::default();
     let mut state = DriveState::default();
-    rprintln!("Initialization complete");
+    rprintln!("[Init] Initialization complete; waiting for first sensor poll");
     const DRIVE_DIST: f32 = 0.5;
     const REVERSE_DIST: f32 = -0.1;
     const DRIVE_SPEED: i16 = 70;
+    // Block until UART connection is made
+    SensorPoller::poll(&mut uart, &mut sensors).unwrap();
+    display.write_row_0("").unwrap();
+    display.write_row_1("").unwrap();
+    rprintln!("[Init] First sensor poll succeedeed; connected to Romi");
     loop {
         delay.delay_ms(1u8);
         SensorPoller::poll(&mut uart, &mut sensors).unwrap();
