@@ -10,6 +10,7 @@ mod kobuki;
 use buckler::lcd_display::LcdDisplay;
 use buckler::lsm9ds1::Imu;
 use core::default;
+use core::fmt::Write;
 use embedded_hal::prelude::_embedded_hal_blocking_delay_DelayMs;
 use kobuki::actuator::Actuator;
 use kobuki::sensors::{SensorPoller, Sensors};
@@ -92,8 +93,8 @@ fn main() -> ! {
     // Initialize display
     let mut spi_cs = port0.p0_18.into_push_pull_output(Level::Low).degrade();
     let mut display = LcdDisplay::new(&mut spi1, &mut spi_cs, &mut delay).unwrap();
-    display.write_row_0("Initializing...").unwrap();
-    display.write_row_1("Blocking on base").unwrap();
+    display.row_0().write_str("Initializing...").unwrap();
+    display.row_1().write_str("Blocking on base").unwrap();
     // Initialize IMU
     let twi0 = hal::twim::Twim::new(
         p.TWIM0,
@@ -107,29 +108,29 @@ fn main() -> ! {
     let mut sensors = Sensors::default();
     let mut state = DriveState::default();
     rprintln!("[Init] Initialization complete; waiting for first sensor poll");
-    const DRIVE_DIST: f32 = 0.5;
+    const DRIVE_DIST: f32 = 0.2;
     const REVERSE_DIST: f32 = -0.1;
     const DRIVE_SPEED: i16 = 70;
     // Block until UART connection is made
     SensorPoller::poll(&mut uart, &mut sensors).unwrap();
-    display.write_row_0("").unwrap();
-    display.write_row_1("").unwrap();
     rprintln!("[Init] First sensor poll succeedeed; connected to Romi");
     loop {
         delay.delay_ms(1u8);
-        SensorPoller::poll(&mut uart, &mut sensors).unwrap();
-        // let accel = imu.read_accel().unwrap();
-        // rprintln!("x_accel: {:.2}", accel.x_axis);
-        let mut actuator = Actuator::new(&mut uart);
-        let is_button_pressed = sensors.is_button_pressed();
         display
-            .write_row_0(match state {
+            .row_0()
+            .write_str(match state {
                 DriveState::Off => "Off",
                 DriveState::Forward { .. } => "Forward",
                 DriveState::Reverse { .. } => "Reverse",
                 DriveState::TurnCcw => "Turn CCW",
             })
             .unwrap();
+        display.row_1().write_str("").unwrap();
+        SensorPoller::poll(&mut uart, &mut sensors).unwrap();
+        // let accel = imu.read_accel().unwrap();
+        // rprintln!("x_accel: {:.2}", accel.x_axis);
+        let mut actuator = Actuator::new(&mut uart);
+        let is_button_pressed = sensors.is_button_pressed();
         match state {
             DriveState::Off => {
                 if is_button_pressed {
@@ -196,7 +197,10 @@ fn main() -> ! {
             }
             DriveState::TurnCcw => {
                 let angle = fabs(imu.read_gyro_integration().unwrap().z_axis);
-                rprintln!("angle turned: {}", angle);
+                display
+                    .row_1()
+                    .write_fmt(format_args!("angle: {:.1}", angle))
+                    .unwrap();
                 if is_button_pressed {
                     state = DriveState::Off;
                     imu.stop_gyro_integration();

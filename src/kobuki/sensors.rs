@@ -380,6 +380,7 @@ impl<'a, T: uarte::Instance> SensorPoller<'a, T> {
         let mut poller = SensorPoller { serial };
         let mut packet: [u8; 140] = [0; 140];
         poller.read_feedback_packet(&mut packet)?;
-        Ok(poller.parse_sensor_packet(&packet, sensors))
+        poller.parse_sensor_packet(&packet, sensors);
+        Ok(())
     }
 }

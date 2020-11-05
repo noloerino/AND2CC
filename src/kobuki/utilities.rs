@@ -28,8 +28,8 @@ pub fn init_uart0(
 
 pub fn checksum(buf: &[u8]) -> u8 {
     let mut cs: u8 = 0;
-    for i in 2..buf.len() {
-        cs ^= buf[i];
+    for e in buf.iter().skip(2) {
+        cs ^= e;
     }
     cs
 }

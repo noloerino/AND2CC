@@ -105,7 +105,7 @@ impl<S: twim::Instance, T: timer::Instance> Imu<S, T> {
         if measure.y_axis > 0.5 || measure.y_axis < -0.5 {
             self.integrated_angle.y_axis += measure.y_axis * time_diff;
         }
-        return Ok(self.integrated_angle);
+        Ok(self.integrated_angle)
     }
 
     /// Stops integration on the gyro.

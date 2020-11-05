@@ -1,15 +1,76 @@
 //! SPI interface to the NHD-0216KZW display.
 //! https://github.com/lab11/buckler/tree/master/software/libraries/nhd_display
 
+use arrayvec::ArrayString;
 use embedded_hal::prelude::_embedded_hal_blocking_delay_DelayMs;
 use nrf52832_hal::delay;
 use nrf52832_hal::gpio::{Output, Pin, PushPull};
 use nrf52832_hal::spim;
 use nrf52832_hal::Spim;
 
+/// Provides access to the LCD display.
+/// The row fields implement fmt::Write.
+/// The rows must not outlive the SPI and CS pins.
 pub struct LcdDisplay<'a, T> {
     spi: &'a mut Spim<T>,
     chip_select: &'a mut Pin<Output<PushPull>>,
+}
+
+pub struct Row<'a, T> {
+    spi: &'a mut Spim<T>,
+    chip_select: &'a mut Pin<Output<PushPull>>,
+    tgt_char: u8,
+}
+
+impl<T: spim::Instance> Row<'_, T> {
+    fn write_byte(&mut self, c: u8) -> Result<(), spim::Error> {
+        let base_char_0: u8 = 0b1000_0000;
+        let base_char_1: u8 = 0;
+        // Write the character
+        // The top 6 bits then the bottom two bits
+        let write_0 = base_char_0 | (c >> 2);
+        let write_1 = base_char_1 | (c << 6);
+        self.spi.write(self.chip_select, &[write_0, write_1])
+    }
+
+    fn do_write(&mut self, msg: &str) -> Result<(), spim::Error> {
+        // Now write the characters of the string then clear the line
+        for &c in msg.as_bytes() {
+            self.write_byte(c)?;
+        }
+        for _ in msg.len()..16 {
+            self.write_byte(b' ')?;
+        }
+        Ok(())
+    }
+}
+
+impl<T: spim::Instance> core::fmt::Write for Row<'_, T> {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        if s.len() > 16 {
+            panic!(
+                "Attempted to write string of len {} to display (max 16)",
+                s.len()
+            );
+        }
+        // Set the screen to the correct character (0x40)
+        let buf = [self.tgt_char, 0];
+        self.spi.write(self.chip_select, &buf).unwrap();
+        self.do_write(s).unwrap();
+        Ok(())
+    }
+
+    /// Writes a format string produced by the format_args! macro.
+    ///
+    /// The default implmentation of this method makes multiple calls to write_str,
+    /// which results in multiple attempts to overwrite the same line of the display.
+    /// To get around this, this implementation buffers the string (since the string
+    /// must at most be length 16 anyway) before writing.
+    fn write_fmt(&mut self, fmt: core::fmt::Arguments) -> core::fmt::Result {
+        let mut buf = ArrayString::<[_; 16]>::new();
+        core::fmt::write(&mut buf, fmt).unwrap();
+        self.write_str(&buf)
+    }
 }
 
 impl<'a, T: spim::Instance> LcdDisplay<'a, T> {
@@ -53,44 +114,19 @@ impl<'a, T: spim::Instance> LcdDisplay<'a, T> {
         Ok(LcdDisplay { spi, chip_select })
     }
 
-    fn write_byte(&mut self, c: u8) -> Result<(), spim::Error> {
-        let base_char_0: u8 = 0b1000_0000;
-        let base_char_1: u8 = 0;
-        // Write the character
-        // The top 6 bits then the bottom two bits
-        let write_0 = base_char_0 | (c >> 2);
-        let write_1 = base_char_1 | (c << 6);
-        self.spi.write(self.chip_select, &[write_0, write_1])
+    pub fn row_0(&mut self) -> Row<T> {
+        Row {
+            tgt_char: 0b0010_0000,
+            chip_select: self.chip_select,
+            spi: self.spi,
+        }
     }
 
-    fn do_write(&mut self, msg: &str) -> Result<(), spim::Error> {
-        // Now write the characters of the string then clear the line
-        for &c in msg.as_bytes() {
-            self.write_byte(c)?;
+    pub fn row_1(&mut self) -> Row<T> {
+        Row {
+            tgt_char: 0b0011_0000,
+            chip_select: self.chip_select,
+            spi: self.spi,
         }
-        for _ in msg.len()..16 {
-            self.write_byte(' ' as u8)?;
-        }
-        Ok(())
-    }
-
-    pub fn write_row_0(&mut self, msg: &str) -> Result<(), spim::Error> {
-        if msg.len() > 16 {
-            return Err(spim::Error::TxBufferTooLong);
-        }
-        // Set the screen to the correct character (0)
-        let buf = [0b0010_0000, 0];
-        self.spi.write(self.chip_select, &buf)?;
-        self.do_write(msg)
-    }
-
-    pub fn write_row_1(&mut self, msg: &str) -> Result<(), spim::Error> {
-        if msg.len() > 16 {
-            return Err(spim::Error::TxBufferTooLong);
-        }
-        // Set the screen to the correct character (0x40)
-        let buf = [0b0011_0000, 0];
-        self.spi.write(self.chip_select, &buf)?;
-        self.do_write(msg)
     }
 }
