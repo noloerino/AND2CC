@@ -17,7 +17,6 @@ use kobuki::sensors::{SensorPoller, Sensors};
 use kobuki::utilities;
 use nrf52832_hal as hal;
 use nrf52832_hal::delay;
-use nrf52832_hal::gpio::Level;
 use rtt_target::{rprintln, rtt_init_print};
 
 enum DriveState {
@@ -68,42 +67,23 @@ fn measure_distance(curr_encoder: u16, prev_encoder: u16, direction: DriveDirect
 fn main() -> ! {
     rtt_init_print!();
     let p = hal::pac::Peripherals::take().unwrap();
-    let port0 = hal::gpio::p0::Parts::new(p.P0);
-    // let button = port0.p0_28.into_pullup_input();
-    // let mut led = port0.p0_23.into_push_pull_output(Level::Low);
+    let mut pins = buckler::pins::Pins::new(p.P0);
     let c = hal::pac::CorePeripherals::take().unwrap();
     let mut delay = delay::Delay::new(c.SYST);
-    let mut uart = utilities::init_uart0(
-        port0.p0_08.into_floating_input().degrade(),
-        port0.p0_06.into_push_pull_output(Level::High).degrade(),
-        p.UARTE0,
-    );
+    let mut uart = utilities::init_uart0(pins.uart_rx, pins.uart_tx, p.UARTE0);
     let mut spi1 = hal::spim::Spim::new(
         p.SPIM1,
-        hal::spim::Pins {
-            // https://github.com/lab11/buckler/blob/master/software/boards/buckler_revC/buckler.h
-            sck: port0.p0_17.into_push_pull_output(Level::Low).degrade(),
-            mosi: Some(port0.p0_15.into_push_pull_output(Level::Low).degrade()),
-            miso: Some(port0.p0_16.into_floating_input().degrade()),
-        },
+        pins.lcd_spi,
         hal::spim::Frequency::M4,
         hal::spim::MODE_2,
         0,
     );
     // Initialize display
-    let mut spi_cs = port0.p0_18.into_push_pull_output(Level::Low).degrade();
-    let mut display = LcdDisplay::new(&mut spi1, &mut spi_cs, &mut delay).unwrap();
+    let mut display = LcdDisplay::new(&mut spi1, &mut pins.lcd_chip_sel, &mut delay).unwrap();
     display.row_0().write_str("Initializing...").unwrap();
     display.row_1().write_str("Blocking on base").unwrap();
     // Initialize IMU
-    let twi0 = hal::twim::Twim::new(
-        p.TWIM0,
-        hal::twim::Pins {
-            scl: port0.p0_19.into_floating_input().degrade(),
-            sda: port0.p0_20.into_floating_input().degrade(),
-        },
-        hal::twim::Frequency::K100,
-    );
+    let twi0 = hal::twim::Twim::new(p.TWIM0, pins.sensors_twi, hal::twim::Frequency::K100);
     let mut imu = Imu::new(twi0, p.TIMER1);
     let mut sensors = Sensors::default();
     let mut state = DriveState::default();
