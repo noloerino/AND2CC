@@ -11,6 +11,7 @@ use embedded_hal::prelude::_embedded_hal_blocking_delay_DelayMs;
 use nrf52832_hal as hal;
 use rtt_target::{rprintln, rtt_init_print};
 
+#[derive(PartialEq)]
 enum DriveState {
     Off,
     Forward {
@@ -80,7 +81,9 @@ fn main() -> ! {
                 DriveState::TurnCcw => "Turn CCW",
             })
             .unwrap();
-        b.display.row_1().write_str("").unwrap();
+        if state != DriveState::TurnCcw {
+            b.display.row_1().write_str("").unwrap();
+        }
         b.poll_sensors().unwrap();
         // let accel = imu.read_accel().unwrap();
         // rprintln!("x_accel: {:.2}", accel.x_axis);
