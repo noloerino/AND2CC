@@ -5,18 +5,10 @@ mod buckler;
 mod error;
 mod kobuki;
 
-// use embedded_hal::digital::v2::InputPin;
-// use embedded_hal::digital::v2::OutputPin;
-use buckler::lcd_display::LcdDisplay;
-use buckler::lsm9ds1::Imu;
 use core::default;
 use core::fmt::Write;
 use embedded_hal::prelude::_embedded_hal_blocking_delay_DelayMs;
-use kobuki::actuator::Actuator;
-use kobuki::sensors::{SensorPoller, Sensors};
-use kobuki::utilities;
 use nrf52832_hal as hal;
-use nrf52832_hal::delay;
 use rtt_target::{rprintln, rtt_init_print};
 
 enum DriveState {
@@ -67,36 +59,19 @@ fn measure_distance(curr_encoder: u16, prev_encoder: u16, direction: DriveDirect
 fn main() -> ! {
     rtt_init_print!();
     let p = hal::pac::Peripherals::take().unwrap();
-    let mut pins = buckler::pins::Pins::new(p.P0);
     let c = hal::pac::CorePeripherals::take().unwrap();
-    let mut delay = delay::Delay::new(c.SYST);
-    let mut uart = utilities::init_uart0(pins.uart_rx, pins.uart_tx, p.UARTE0);
-    let mut spi1 = hal::spim::Spim::new(
-        p.SPIM1,
-        pins.lcd_spi,
-        hal::spim::Frequency::M4,
-        hal::spim::MODE_2,
-        0,
-    );
-    // Initialize display
-    let mut display = LcdDisplay::new(&mut spi1, &mut pins.lcd_chip_sel, &mut delay).unwrap();
-    display.row_0().write_str("Initializing...").unwrap();
-    display.row_1().write_str("Blocking on base").unwrap();
-    // Initialize IMU
-    let twi0 = hal::twim::Twim::new(p.TWIM0, pins.sensors_twi, hal::twim::Frequency::K100);
-    let mut imu = Imu::new(twi0, p.TIMER1);
-    let mut sensors = Sensors::default();
+    let mut b = buckler::board::Board::new(p, c);
     let mut state = DriveState::default();
     rprintln!("[Init] Initialization complete; waiting for first sensor poll");
     const DRIVE_DIST: f32 = 0.2;
     const REVERSE_DIST: f32 = -0.1;
     const DRIVE_SPEED: i16 = 70;
     // Block until UART connection is made
-    SensorPoller::poll(&mut uart, &mut sensors).unwrap();
+    b.poll_sensors().unwrap();
     rprintln!("[Init] First sensor poll succeedeed; connected to Romi");
     loop {
-        delay.delay_ms(1u8);
-        display
+        b.delay.delay_ms(1u8);
+        b.display
             .row_0()
             .write_str(match state {
                 DriveState::Off => "Off",
@@ -105,21 +80,20 @@ fn main() -> ! {
                 DriveState::TurnCcw => "Turn CCW",
             })
             .unwrap();
-        display.row_1().write_str("").unwrap();
-        SensorPoller::poll(&mut uart, &mut sensors).unwrap();
+        b.display.row_1().write_str("").unwrap();
+        b.poll_sensors().unwrap();
         // let accel = imu.read_accel().unwrap();
         // rprintln!("x_accel: {:.2}", accel.x_axis);
-        let mut actuator = Actuator::new(&mut uart);
-        let is_button_pressed = sensors.is_button_pressed();
+        let is_button_pressed = b.sensors.is_button_pressed();
         match state {
             DriveState::Off => {
                 if is_button_pressed {
                     state = DriveState::Forward {
-                        last_encoder: sensors.left_wheel_encoder,
+                        last_encoder: b.sensors.left_wheel_encoder,
                         distance_traveled: 0.0,
                     };
                 } else {
-                    actuator.drive_direct(0, 0).unwrap();
+                    b.actuator().drive_direct(0, 0).unwrap();
                 }
             }
             DriveState::Forward {
@@ -128,25 +102,25 @@ fn main() -> ! {
             } => {
                 if is_button_pressed {
                     state = DriveState::Off;
-                } else if sensors.is_bump() {
-                    rprintln!("Bump! (timestamp {})", sensors.timestamp);
-                    actuator.drive_direct(0, 0).unwrap();
+                } else if b.sensors.is_bump() {
+                    rprintln!("Bump! (timestamp {})", b.sensors.timestamp);
+                    b.actuator().drive_direct(0, 0).unwrap();
                     // Add slight delay and repoll to let wheel stop
-                    delay.delay_ms(100u16);
-                    SensorPoller::poll(&mut uart, &mut sensors).unwrap();
+                    b.delay.delay_ms(100u16);
+                    b.poll_sensors().unwrap();
                     state = DriveState::Reverse {
-                        last_encoder: sensors.left_wheel_encoder,
+                        last_encoder: b.sensors.left_wheel_encoder,
                         distance_traveled: 0.0,
                     };
                 } else {
-                    let curr_encoder = sensors.left_wheel_encoder;
+                    let curr_encoder = b.sensors.left_wheel_encoder;
                     distance_traveled +=
                         measure_distance(curr_encoder, last_encoder, DriveDirection::Forward);
                     if distance_traveled >= DRIVE_DIST {
                         state = DriveState::TurnCcw;
-                        imu.start_gyro_integration();
+                        b.imu.start_gyro_integration();
                     } else {
-                        actuator.drive_direct(DRIVE_SPEED, DRIVE_SPEED).unwrap();
+                        b.actuator().drive_direct(DRIVE_SPEED, DRIVE_SPEED).unwrap();
                         state = DriveState::Forward {
                             last_encoder: curr_encoder,
                             distance_traveled,
@@ -161,13 +135,15 @@ fn main() -> ! {
                 if is_button_pressed {
                     state = DriveState::Off;
                 } else {
-                    let curr_encoder = sensors.left_wheel_encoder;
+                    let curr_encoder = b.sensors.left_wheel_encoder;
                     distance_traveled +=
                         measure_distance(curr_encoder, last_encoder, DriveDirection::Reverse);
                     if distance_traveled <= REVERSE_DIST {
                         state = DriveState::Off;
                     } else {
-                        actuator.drive_direct(-DRIVE_SPEED, -DRIVE_SPEED).unwrap();
+                        b.actuator()
+                            .drive_direct(-DRIVE_SPEED, -DRIVE_SPEED)
+                            .unwrap();
                         state = DriveState::Reverse {
                             last_encoder: curr_encoder,
                             distance_traveled,
@@ -176,26 +152,28 @@ fn main() -> ! {
                 }
             }
             DriveState::TurnCcw => {
-                let angle = fabs(imu.read_gyro_integration().unwrap().z_axis);
-                display
+                let angle = fabs(b.imu.read_gyro_integration().unwrap().z_axis);
+                b.display
                     .row_1()
                     .write_fmt(format_args!("angle: {:.1}", angle))
                     .unwrap();
                 if is_button_pressed {
                     state = DriveState::Off;
-                    imu.stop_gyro_integration();
+                    b.imu.stop_gyro_integration();
                 } else if angle >= 90.0 {
-                    actuator.drive_direct(0, 0).unwrap();
+                    b.actuator().drive_direct(0, 0).unwrap();
                     // Add slight delay and repoll to let wheel stop
-                    delay.delay_ms(100u16);
-                    SensorPoller::poll(&mut uart, &mut sensors).unwrap();
+                    b.delay.delay_ms(100u16);
+                    b.poll_sensors().unwrap();
                     state = DriveState::Forward {
-                        last_encoder: sensors.left_wheel_encoder,
+                        last_encoder: b.sensors.left_wheel_encoder,
                         distance_traveled: 0.0,
                     };
-                    imu.stop_gyro_integration();
+                    b.imu.stop_gyro_integration();
                 } else {
-                    actuator.drive_direct(DRIVE_SPEED, -DRIVE_SPEED).unwrap();
+                    b.actuator()
+                        .drive_direct(DRIVE_SPEED, -DRIVE_SPEED)
+                        .unwrap();
                 }
             }
         }

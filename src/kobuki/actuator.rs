@@ -4,7 +4,6 @@
 //!   Rewritten in Rust By:   Jonathan Shi
 //!   Revised:    2020-11-03
 //!
-use crate::kobuki::utilities;
 use nrf52832_hal::uarte;
 use nrf52832_hal::Uarte;
 
@@ -39,7 +38,7 @@ impl<'a, T: uarte::Instance> Actuator<'a, T> {
         write_data[1] = 0x55;
         write_data[2] = len;
         write_data[3..(3 + len as usize)].copy_from_slice(payload);
-        write_data[3 + len as usize] = utilities::checksum(&write_data[..(3 + len) as usize]);
+        write_data[3 + len as usize] = super::checksum(&write_data[..(3 + len) as usize]);
         self.serial.write(&write_data[..(4 + len as usize)])
     }
 

@@ -11,9 +11,9 @@ use nrf52832_hal::Spim;
 /// Provides access to the LCD display.
 /// The row fields implement fmt::Write.
 /// The rows must not outlive the SPI and CS pins.
-pub struct LcdDisplay<'a, T> {
-    spi: &'a mut Spim<T>,
-    chip_select: &'a mut Pin<Output<PushPull>>,
+pub struct LcdDisplay<T> {
+    spi: Spim<T>,
+    chip_select: Pin<Output<PushPull>>,
 }
 
 pub struct Row<'a, T> {
@@ -73,11 +73,11 @@ impl<T: spim::Instance> core::fmt::Write for Row<'_, T> {
     }
 }
 
-impl<'a, T: spim::Instance> LcdDisplay<'a, T> {
+impl<T: spim::Instance> LcdDisplay<T> {
     /// Initializees the display. Corresponds to display_init
     pub fn new<'b>(
-        spi: &'a mut Spim<T>,
-        chip_select: &'a mut Pin<Output<PushPull>>,
+        mut spi: Spim<T>,
+        mut chip_select: Pin<Output<PushPull>>,
         delay: &'b mut delay::Delay,
     ) -> Result<Self, spim::Error> {
         // We cannot pass the array directly to the function because DMA requires
@@ -85,31 +85,31 @@ impl<'a, T: spim::Instance> LcdDisplay<'a, T> {
         let mut buf: [u8; 2];
         // Set function 8-bit mode
         buf = [0b1110, 0];
-        spi.write(chip_select, &buf)?;
+        spi.write(&mut chip_select, &buf)?;
         delay.delay_ms(10u8);
         // Turn display off
         buf = [0b10, 0];
-        spi.write(chip_select, &buf)?;
+        spi.write(&mut chip_select, &buf)?;
         delay.delay_ms(10u8);
         // Clear display
         buf = [0, 0b0100_0000];
-        spi.write(chip_select, &buf)?;
+        spi.write(&mut chip_select, &buf)?;
         delay.delay_ms(10u8);
         // Set entry mode to increment right no shift
         buf = [1, 0b1000_0000];
-        spi.write(chip_select, &buf)?;
+        spi.write(&mut chip_select, &buf)?;
         delay.delay_ms(10u8);
         // Move cursor home
         buf = [0, 0b1000_0000];
-        spi.write(chip_select, &buf)?;
+        spi.write(&mut chip_select, &buf)?;
         delay.delay_ms(10u8);
         // Move cursor home
         buf = [0b11, 0b0100_0000];
-        spi.write(chip_select, &buf)?;
+        spi.write(&mut chip_select, &buf)?;
         delay.delay_ms(10u8);
         // Read the status bit
         buf = [0b0100_0000, 0];
-        spi.write(chip_select, &buf)?;
+        spi.write(&mut chip_select, &buf)?;
         delay.delay_ms(10u8);
         Ok(LcdDisplay { spi, chip_select })
     }
@@ -117,16 +117,16 @@ impl<'a, T: spim::Instance> LcdDisplay<'a, T> {
     pub fn row_0(&mut self) -> Row<T> {
         Row {
             tgt_char: 0b0010_0000,
-            chip_select: self.chip_select,
-            spi: self.spi,
+            chip_select: &mut self.chip_select,
+            spi: &mut self.spi,
         }
     }
 
     pub fn row_1(&mut self) -> Row<T> {
         Row {
             tgt_char: 0b0011_0000,
-            chip_select: self.chip_select,
-            spi: self.spi,
+            chip_select: &mut self.chip_select,
+            spi: &mut self.spi,
         }
     }
 }

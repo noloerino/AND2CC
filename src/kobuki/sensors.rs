@@ -2,7 +2,6 @@
 //! See https://github.com/lab11/buckler/tree/master/software/libraries/kobuki
 //! Some additional convenience functions are also provided.
 
-use crate::kobuki::utilities;
 use core::convert::TryInto;
 use core::default;
 use nrf52832_hal::uarte;
@@ -253,7 +252,7 @@ impl<'a, T: uarte::Instance> SensorPoller<'a, T> {
                     packet_buffer[0..2].copy_from_slice(&header_buf);
                     packet_buffer[2] = payload_size_buf[0];
                     let calculated_checksum =
-                        utilities::checksum(&packet_buffer[..payload_size_buf[0] as usize + 3]);
+                        super::checksum(&packet_buffer[..payload_size_buf[0] as usize + 3]);
                     let byte_buffer = packet_buffer[payload_size_buf[0] as usize + 3];
                     if calculated_checksum == byte_buffer {
                         return Ok(());
