@@ -9,6 +9,9 @@ flash:
 clean:
 	cargo clean
 
+doc:
+	cargo doc --no-deps
+
 GDB ?= arm-none-eabi-gdb -tui
 TARGET ?= target/thumbv7em-none-eabihf/debug/and_2_cc
 

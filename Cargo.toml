@@ -1,5 +1,5 @@
 [package]
-name = "and_2_cc"
+name = "ddd"
 version = "0.1.0"
 authors = ["Jonathan Shi <jhshi@berkeley.edu>"]
 edition = "2018"
@@ -21,7 +21,7 @@ features = ["unproven"]
 
 # this lets you use `cargo fix`!
 [[bin]]
-name = "and_2_cc"
+name = "ddd"
 test = false
 bench = false
 

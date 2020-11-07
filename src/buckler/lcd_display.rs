@@ -9,8 +9,13 @@ use nrf52832_hal::spim;
 use nrf52832_hal::Spim;
 
 /// Provides access to the LCD display.
-/// The row fields implement fmt::Write.
-/// The rows must not outlive the SPI and CS pins.
+///
+/// To write text to a particular row of the display, use the [`row_0`] and [`row_1`] methods
+/// to obtain references to the respective [`Row`] instances.
+///
+/// [`row_0`]: #method.row_0
+/// [`row_1`]: #method.row_1
+/// [`Row`]: ./struct.Row.html
 pub struct LcdDisplay<T> {
     spi: Spim<T>,
     chip_select: Pin<Output<PushPull>>,

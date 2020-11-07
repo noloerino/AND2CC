@@ -10,19 +10,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "and_2_cc"
-version = "0.1.0"
-dependencies = [
- "arrayvec",
- "cortex-m",
- "cortex-m-rt",
- "embedded-hal",
- "lsm9ds1",
- "nrf52832-hal",
- "rtt-target",
-]
-
-[[package]]
 name = "arrayvec"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -101,6 +88,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "ddd"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "cortex-m",
+ "cortex-m-rt",
+ "embedded-hal",
+ "lsm9ds1",
+ "nrf52832-hal",
+ "rtt-target",
 ]
 
 [[package]]
