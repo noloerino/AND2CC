@@ -7,12 +7,14 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cortex-m = "0.6.0"
-cortex-m-rt = "0.6.10"
+cortex-m = "0.6.4"
+cortex-m-rt = "0.6.13"
 rtt-target = { version = "0.2.0", features = ["cortex-m"] }
 nrf52832-hal = { version = "0.11.0", features = ["rt"] }
 lsm9ds1 = "0.1.0"
 arrayvec = { version = "0.5.2", default-features = false, features = [] }
+cortex-m-rtic = "0.5.5"
+
 # alloc-cortex-m = "0.4.0"
 
 [dependencies.embedded-hal]

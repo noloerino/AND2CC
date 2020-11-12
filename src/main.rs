@@ -9,6 +9,7 @@ use core::default;
 use core::fmt::Write;
 use embedded_hal::prelude::_embedded_hal_blocking_delay_DelayMs;
 use nrf52832_hal as hal;
+use rtic::app;
 use rtt_target::{rprintln, rtt_init_print};
 
 #[derive(PartialEq)]
@@ -56,21 +57,38 @@ fn measure_distance(curr_encoder: u16, prev_encoder: u16, direction: DriveDirect
         })
 }
 
-#[cortex_m_rt::entry]
-fn main() -> ! {
-    rtt_init_print!();
-    let p = hal::pac::Peripherals::take().unwrap();
-    let c = hal::pac::CorePeripherals::take().unwrap();
-    let mut b = buckler::board::Board::new(p, c);
+#[app(device = nrf52832_hal::pac, peripherals = true)]
+const APP: () = {
+    struct Resources {
+        b: buckler::board::Board,
+    }
+
+    // https://rtic.rs/0.5/book/en/by-example/app.html#init
+    #[init]
+    fn init(cx: init::Context) -> init::LateResources {
+        rtt_init_print!();
+        let p: hal::pac::Peripherals = cx.device;
+        let c: hal::pac::CorePeripherals = cx.core;
+        let mut b = buckler::board::Board::new(p, c);
+        rprintln!("[Init] Initialization complete; waiting for first sensor poll from Romi");
+        // Block until UART connection is made
+        b.poll_sensors().unwrap();
+        rprintln!("[Init] First sensor poll succeedeed; connected to Romi");
+        init::LateResources { b }
+    }
+
+    #[idle(resources = [b])]
+    fn idle(c: idle::Context) -> ! {
+        main_loop(c.resources.b);
+    }
+};
+
+fn main_loop(b: &mut buckler::board::Board) -> ! {
     let mut state = DriveState::default();
-    rprintln!("[Init] Initialization complete; waiting for first sensor poll from Romi");
-    const DRIVE_DIST: f32 = 0.2;
-    const REVERSE_DIST: f32 = -0.1;
-    const DRIVE_SPEED: i16 = 70;
-    // Block until UART connection is made
-    b.poll_sensors().unwrap();
-    rprintln!("[Init] First sensor poll succeedeed; connected to Romi");
     loop {
+        const DRIVE_DIST: f32 = 0.2;
+        const REVERSE_DIST: f32 = -0.1;
+        const DRIVE_SPEED: i16 = 70;
         b.delay.delay_ms(1u8);
         b.display
             .row_0()
