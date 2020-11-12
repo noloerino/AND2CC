@@ -3,6 +3,7 @@
 
 mod buckler;
 mod error;
+mod examples;
 mod kobuki;
 
 use core::default;
@@ -84,12 +85,18 @@ const APP: () = {
         // Block until UART connection is made
         b.poll_sensors().unwrap();
         rprintln!("[Init] First sensor poll succeedeed; connected to Romi");
+        b.display.row_0().write_str("Buckler online!").ok();
+        b.display.row_1().clear().ok();
         init::LateResources { b }
     }
 
     #[idle(resources = [b])]
     fn idle(c: idle::Context) -> ! {
-        main_loop(c.resources.b);
+        let b = c.resources.b;
+        main_loop(b);
+        // Comment out main_loop and uncomment these to run sanity examples
+        // examples::blink(b);
+        // examples::display(b);
     }
 };
 

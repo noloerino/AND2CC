@@ -1,7 +1,13 @@
 //! SPI interface to the NHD-0216KZW display.
+//!
+//! Note that the first byte written over SPI contains RS | R/W | DB7 .. DB2,
+//! and DB1 and DB0 appear to be transmitted in the next byte.
+//!
+//! https://www.newhavendisplay.com/specs/NHD-0216KZW-AY5.pdf
 //! https://github.com/lab11/buckler/tree/master/software/libraries/nhd_display
 
 use arrayvec::ArrayString;
+use core::fmt::Write;
 use embedded_hal::prelude::_embedded_hal_blocking_delay_DelayMs;
 use nrf52832_hal::delay;
 use nrf52832_hal::gpio::{Output, Pin, PushPull};
@@ -48,9 +54,13 @@ impl<T: spim::Instance> Row<'_, T> {
         }
         Ok(())
     }
+
+    pub fn clear(&mut self) -> core::fmt::Result {
+        self.write_str("")
+    }
 }
 
-impl<T: spim::Instance> core::fmt::Write for Row<'_, T> {
+impl<T: spim::Instance> Write for Row<'_, T> {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         if s.len() > 16 {
             panic!(
@@ -58,7 +68,7 @@ impl<T: spim::Instance> core::fmt::Write for Row<'_, T> {
                 s.len()
             );
         }
-        // Set the screen to the correct character (0x40)
+        // Set the screen to the correct character (0x40 for row 1, 0 for row 0)
         let buf = [self.tgt_char, 0];
         self.spi.write(self.chip_select, &buf).unwrap();
         self.do_write(s).unwrap();
@@ -108,7 +118,7 @@ impl<T: spim::Instance> LcdDisplay<T> {
         buf = [0, 0b1000_0000];
         spi.write(&mut chip_select, &buf)?;
         delay.delay_ms(10u8);
-        // Move cursor home
+        // Turn on display
         buf = [0b11, 0b0100_0000];
         spi.write(&mut chip_select, &buf)?;
         delay.delay_ms(10u8);
