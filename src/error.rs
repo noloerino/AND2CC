@@ -8,19 +8,18 @@ use rtt_target::rprintln;
 fn panic(e: &core::panic::PanicInfo) -> ! {
     rprintln!("Unhandled panic; stopping");
     rprintln!("{}", e);
-    blink_loop();
+    dead_loop();
 }
 
-/// Handles HardFaults. Requires RTT and GPIO to be initialized.
+/// Handles HardFaults. Requires RTT to be initialized.
 #[exception]
 fn HardFault(ef: &ExceptionFrame) -> ! {
     rprintln!("A hard fault occured");
     rprintln!("{:#?}", ef);
-    blink_loop();
+    dead_loop();
 }
 
-// TODO configure to blink LEDs
-fn blink_loop() -> ! {
+fn dead_loop() -> ! {
     loop {
         cortex_m::asm::bkpt();
     }

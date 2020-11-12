@@ -63,7 +63,7 @@ fn main() -> ! {
     let c = hal::pac::CorePeripherals::take().unwrap();
     let mut b = buckler::board::Board::new(p, c);
     let mut state = DriveState::default();
-    rprintln!("[Init] Initialization complete; waiting for first sensor poll");
+    rprintln!("[Init] Initialization complete; waiting for first sensor poll from Romi");
     const DRIVE_DIST: f32 = 0.2;
     const REVERSE_DIST: f32 = -0.1;
     const DRIVE_SPEED: i16 = 70;
@@ -80,13 +80,11 @@ fn main() -> ! {
                 DriveState::Reverse { .. } => "Reverse",
                 DriveState::TurnCcw => "Turn CCW",
             })
-            .unwrap();
+            .ok();
         if state != DriveState::TurnCcw {
-            b.display.row_1().write_str("").unwrap();
+            b.display.row_1().write_str("").ok();
         }
         b.poll_sensors().unwrap();
-        // let accel = imu.read_accel().unwrap();
-        // rprintln!("x_accel: {:.2}", accel.x_axis);
         let is_button_pressed = b.sensors.is_button_pressed();
         match state {
             DriveState::Off => {
@@ -96,7 +94,7 @@ fn main() -> ! {
                         distance_traveled: 0.0,
                     };
                 } else {
-                    b.actuator().drive_direct(0, 0).unwrap();
+                    b.actuator().drive_direct(0, 0).ok();
                 }
             }
             DriveState::Forward {
@@ -123,7 +121,7 @@ fn main() -> ! {
                         state = DriveState::TurnCcw;
                         b.imu.start_gyro_integration();
                     } else {
-                        b.actuator().drive_direct(DRIVE_SPEED, DRIVE_SPEED).unwrap();
+                        b.actuator().drive_direct(DRIVE_SPEED, DRIVE_SPEED).ok();
                         state = DriveState::Forward {
                             last_encoder: curr_encoder,
                             distance_traveled,
@@ -144,9 +142,7 @@ fn main() -> ! {
                     if distance_traveled <= REVERSE_DIST {
                         state = DriveState::Off;
                     } else {
-                        b.actuator()
-                            .drive_direct(-DRIVE_SPEED, -DRIVE_SPEED)
-                            .unwrap();
+                        b.actuator().drive_direct(-DRIVE_SPEED, -DRIVE_SPEED).ok();
                         state = DriveState::Reverse {
                             last_encoder: curr_encoder,
                             distance_traveled,
@@ -159,24 +155,22 @@ fn main() -> ! {
                 b.display
                     .row_1()
                     .write_fmt(format_args!("angle: {:.1}", angle))
-                    .unwrap();
+                    .ok();
                 if is_button_pressed {
                     state = DriveState::Off;
                     b.imu.stop_gyro_integration();
                 } else if angle >= 90.0 {
-                    b.actuator().drive_direct(0, 0).unwrap();
+                    b.actuator().drive_direct(0, 0).ok();
                     // Add slight delay and repoll to let wheel stop
                     b.delay.delay_ms(100u16);
-                    b.poll_sensors().unwrap();
+                    b.poll_sensors().ok();
                     state = DriveState::Forward {
                         last_encoder: b.sensors.left_wheel_encoder,
                         distance_traveled: 0.0,
                     };
                     b.imu.stop_gyro_integration();
                 } else {
-                    b.actuator()
-                        .drive_direct(DRIVE_SPEED, -DRIVE_SPEED)
-                        .unwrap();
+                    b.actuator().drive_direct(DRIVE_SPEED, -DRIVE_SPEED).ok();
                 }
             }
         }
