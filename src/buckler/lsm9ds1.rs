@@ -71,6 +71,13 @@ impl<S: twim::Instance, T: timer::Instance> Imu<S, T> {
         Ok(ImuMeasure::from_triple(self.instance.read_mag()?))
     }
 
+    /// Forcibly restarts gyro integration, regardless of whether it was already started.
+    /// This is akin to calling stop followed by start.
+    pub fn restart_gyro_integration(&mut self) {
+        self.stop_gyro_integration();
+        self.start_gyro_integration();
+    }
+
     // TODO add type states for integration
     /// Begins integration on the gyro. Panics if integration already started.
     pub fn start_gyro_integration(&mut self) {

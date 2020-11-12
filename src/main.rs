@@ -12,24 +12,34 @@ use nrf52832_hal as hal;
 use rtic::app;
 use rtt_target::{rprintln, rtt_init_print};
 
+const DETECT_RECALIBRATE_M: f32 = 1.0;
+const DRIVE_SPEED: i16 = 70;
+
+/// Top-level states of the FSM
 #[derive(PartialEq)]
-enum DriveState {
+enum TopState {
     Off,
-    Forward {
-        last_encoder: u16,
-        distance_traveled: f32,
-    },
-    Reverse {
-        last_encoder: u16,
-        distance_traveled: f32,
-    },
-    TurnCcw,
+    Detect(DetectState),
+    Dock,
+    Drive,
 }
 
-impl default::Default for DriveState {
+impl default::Default for TopState {
     fn default() -> Self {
-        DriveState::Off
+        TopState::Off
     }
+}
+
+/// Describes states for the detection phase.
+#[derive(PartialEq)]
+enum DetectState {
+    /// Rotating to look for target
+    Scan,
+    /// Driving towards the target (should be facing backwards)
+    Approach {
+        last_encoder: u16,
+        distance_traveled: f32,
+    },
 }
 
 #[derive(PartialEq)]
@@ -84,111 +94,108 @@ const APP: () = {
 };
 
 fn main_loop(b: &mut buckler::board::Board) -> ! {
-    let mut state = DriveState::default();
+    use TopState::*;
+    let mut top_state = TopState::default();
     loop {
-        const DRIVE_DIST: f32 = 0.2;
-        const REVERSE_DIST: f32 = -0.1;
-        const DRIVE_SPEED: i16 = 70;
         b.delay.delay_ms(1u8);
+        b.poll_sensors().unwrap();
+        // Can't just print debug string due to internal state
         b.display
             .row_0()
-            .write_str(match state {
-                DriveState::Off => "Off",
-                DriveState::Forward { .. } => "Forward",
-                DriveState::Reverse { .. } => "Reverse",
-                DriveState::TurnCcw => "Turn CCW",
+            .write_str(match top_state {
+                Off => "Off",
+                Detect(..) => "Detect",
+                Dock => "Dock",
+                Drive => "Drive",
             })
             .ok();
-        if state != DriveState::TurnCcw {
-            b.display.row_1().write_str("").ok();
-        }
-        b.poll_sensors().unwrap();
         let is_button_pressed = b.sensors.is_button_pressed();
-        match state {
-            DriveState::Off => {
+        match top_state {
+            Off => {
+                b.display.row_1().write_str("").ok();
                 if is_button_pressed {
-                    state = DriveState::Forward {
-                        last_encoder: b.sensors.left_wheel_encoder,
-                        distance_traveled: 0.0,
-                    };
+                    rprintln!("Beginning detect phase");
+                    b.imu.restart_gyro_integration();
+                    top_state = TopState::Detect(DetectState::Scan);
                 } else {
                     b.actuator().drive_direct(0, 0).ok();
                 }
             }
-            DriveState::Forward {
-                last_encoder,
-                mut distance_traveled,
-            } => {
+            Detect(detect_state) => {
+                // TODO transition to dock when proximity is detected
                 if is_button_pressed {
-                    state = DriveState::Off;
-                } else if b.sensors.is_bump() {
-                    rprintln!("Bump! (timestamp {})", b.sensors.timestamp);
-                    b.actuator().drive_direct(0, 0).unwrap();
-                    // Add slight delay and repoll to let wheel stop
-                    b.delay.delay_ms(100u16);
-                    b.poll_sensors().unwrap();
-                    state = DriveState::Reverse {
+                    top_state = TopState::Off;
+                } else {
+                    top_state = Detect(detect_state.react(b));
+                }
+            }
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl DetectState {
+    fn react(self, b: &mut buckler::board::Board) -> DetectState {
+        use DetectState::*;
+        // TODO hook up to pixy2
+        // Hack to simulate detection after some number of cycles
+        static mut N: u32 = 0;
+        let tgt_detected: bool;
+        unsafe {
+            match self {
+                Scan => {
+                    N += 1;
+                }
+                _ => N = 0,
+            }
+            tgt_detected = N >= 200;
+        }
+        match self {
+            Scan => {
+                let angle = fabs(b.imu.read_gyro_integration().unwrap().z_axis);
+                if tgt_detected {
+                    rprintln!("Moving to approach at angle {}", angle);
+                    b.imu.stop_gyro_integration();
+                    Approach {
                         last_encoder: b.sensors.left_wheel_encoder,
                         distance_traveled: 0.0,
-                    };
-                } else {
-                    let curr_encoder = b.sensors.left_wheel_encoder;
-                    distance_traveled +=
-                        measure_distance(curr_encoder, last_encoder, DriveDirection::Forward);
-                    if distance_traveled >= DRIVE_DIST {
-                        state = DriveState::TurnCcw;
-                        b.imu.start_gyro_integration();
-                    } else {
-                        b.actuator().drive_direct(DRIVE_SPEED, DRIVE_SPEED).ok();
-                        state = DriveState::Forward {
-                            last_encoder: curr_encoder,
-                            distance_traveled,
-                        }
                     }
+                } else {
+                    // If this turns out to be flaky, ok() instead of unwrap() and retry
+                    b.display
+                        .row_1()
+                        .write_fmt(format_args!("SCAN: {:.1}", angle))
+                        .ok();
+                    b.actuator().drive_direct(DRIVE_SPEED, -DRIVE_SPEED).ok();
+                    Scan
                 }
             }
-            DriveState::Reverse {
+            Approach {
                 last_encoder,
                 mut distance_traveled,
             } => {
-                if is_button_pressed {
-                    state = DriveState::Off;
-                } else {
-                    let curr_encoder = b.sensors.left_wheel_encoder;
-                    distance_traveled +=
-                        measure_distance(curr_encoder, last_encoder, DriveDirection::Reverse);
-                    if distance_traveled <= REVERSE_DIST {
-                        state = DriveState::Off;
-                    } else {
-                        b.actuator().drive_direct(-DRIVE_SPEED, -DRIVE_SPEED).ok();
-                        state = DriveState::Reverse {
-                            last_encoder: curr_encoder,
-                            distance_traveled,
-                        }
-                    }
-                }
-            }
-            DriveState::TurnCcw => {
-                let angle = fabs(b.imu.read_gyro_integration().unwrap().z_axis);
                 b.display
                     .row_1()
-                    .write_fmt(format_args!("angle: {:.1}", angle))
+                    .write_fmt(format_args!("APPROACH: {:.1}m", distance_traveled))
                     .ok();
-                if is_button_pressed {
-                    state = DriveState::Off;
-                    b.imu.stop_gyro_integration();
-                } else if angle >= 90.0 {
-                    b.actuator().drive_direct(0, 0).ok();
-                    // Add slight delay and repoll to let wheel stop
-                    b.delay.delay_ms(100u16);
-                    b.poll_sensors().ok();
-                    state = DriveState::Forward {
-                        last_encoder: b.sensors.left_wheel_encoder,
-                        distance_traveled: 0.0,
-                    };
-                    b.imu.stop_gyro_integration();
+                if distance_traveled >= DETECT_RECALIBRATE_M {
+                    rprintln!("Reorienting towards target");
+                    b.imu.start_gyro_integration();
+                    Scan
                 } else {
-                    b.actuator().drive_direct(DRIVE_SPEED, -DRIVE_SPEED).ok();
+                    // Drive robot backwards until 1m has been traversed, at which point we attempt
+                    // to reorient just to be safe
+                    b.actuator().drive_direct(-DRIVE_SPEED, -DRIVE_SPEED).ok();
+                    let curr_encoder = b.sensors.left_wheel_encoder;
+                    distance_traveled += fabs(measure_distance(
+                        curr_encoder,
+                        last_encoder,
+                        DriveDirection::Reverse,
+                    ));
+                    Approach {
+                        last_encoder: curr_encoder,
+                        distance_traveled,
+                    }
                 }
             }
         }

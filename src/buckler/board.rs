@@ -45,9 +45,9 @@ impl Pins {
             },
             lcd_chip_sel: p.p0_18.into_push_pull_output(Level::Low).degrade(),
             leds: (
-                p.p0_25.into_push_pull_output(Level::Low).degrade(),
-                p.p0_24.into_push_pull_output(Level::Low).degrade(),
-                p.p0_23.into_push_pull_output(Level::Low).degrade(),
+                p.p0_25.into_push_pull_output(Level::High).degrade(),
+                p.p0_24.into_push_pull_output(Level::High).degrade(),
+                p.p0_23.into_push_pull_output(Level::High).degrade(),
             ),
             uart_rx: p.p0_08.into_floating_input().degrade(),
             uart_tx: p.p0_06.into_push_pull_output(Level::High).degrade(),
