@@ -91,6 +91,9 @@ impl Board {
             pac::uarte0::baudrate::BAUDRATE_A::BAUD115200,
         );
         let spi1 = spim::Spim::new(p.SPIM1, pins.lcd_spi, spim::Frequency::M4, spim::MODE_2, 0);
+
+        // let spix = spim::Spim::new(p.SPIMX, pins.pixy2, spim::Frequency::M2, spim::MODE_3, 0);
+        
         // Initialize display
         let mut display = LcdDisplay::new(spi1, pins.lcd_chip_sel, &mut delay).unwrap();
         display.row_0().write_str("Initializing...").unwrap();
