@@ -16,13 +16,15 @@ pub type Leds = (
 pub struct Pins {
     // TODO add analog accel pins and grove headers
     // TODO IMU interrupt, light interrupt
-    // TODO SD card
     pub button_0: Pin<Input<PullUp>>,
     pub switch_0: Pin<Input<PullDown>>,
     pub sensors_twi: twim::Pins,
     // TODO factor out display pins into its own struct
     pub lcd_spi: spim::Pins,
     pub lcd_chip_sel: Pin<Output<PushPull>>,
+    // These pins are repurposed from SD card interface
+    pub pixy_spi: spim::Pins,
+    pub pixy_chip_sel: Pin<Output<PushPull>>,
     pub leds: Leds,
     pub uart_rx: Pin<Input<Floating>>,
     pub uart_tx: Pin<Output<PushPull>>,
@@ -44,6 +46,12 @@ impl Pins {
                 miso: Some(p.p0_16.into_floating_input().degrade()),
             },
             lcd_chip_sel: p.p0_18.into_push_pull_output(Level::Low).degrade(),
+            pixy_spi: spim::Pins {
+                sck: p.p0_13.into_push_pull_output(Level::Low).degrade(),
+                mosi: Some(p.p0_11.into_push_pull_output(Level::Low).degrade()),
+                miso: Some(p.p0_12.into_floating_input().degrade()),
+            },
+            pixy_chip_sel: p.p0_14.into_push_pull_output(Level::Low).degrade(),
             leds: (
                 p.p0_25.into_push_pull_output(Level::High).degrade(),
                 p.p0_24.into_push_pull_output(Level::High).degrade(),
