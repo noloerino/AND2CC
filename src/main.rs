@@ -93,12 +93,13 @@ const APP: () = {
     #[idle(resources = [b])]
     fn idle(c: idle::Context) -> ! {
         let b = c.resources.b;
-        main_loop(b);
+        // main_loop(b);
         // Comment out main_loop and uncomment these to run sanity examples
         // examples::blink(b);
         // examples::display(b);
         // examples::drive_forward(b);
         // examples::drive_reverse(b);
+        examples::dock_continuity(b);
     }
 };
 

@@ -6,11 +6,14 @@
 use crate::buckler::board::Board;
 use embedded_hal::digital::v2::{InputPin, OutputPin};
 use embedded_hal::prelude::_embedded_hal_blocking_delay_DelayMs;
+use rtt_target::rprintln;
 
 /// Lights all three LEDs if BUTTON0 is pressed.
 pub fn blink(b: &mut Board) -> ! {
     loop {
         b.delay.delay_ms(1u8);
+        // Button is high when not pressed
+        // LEDs are active low
         if b.button_0.is_high().unwrap() {
             b.leds.0.set_high().ok();
             b.leds.1.set_high().ok();
@@ -44,5 +47,20 @@ pub fn drive_reverse(b: &mut Board) -> ! {
     loop {
         b.delay.delay_ms(1u8);
         b.actuator().drive_direct(-100, -100).ok();
+    }
+}
+
+/// Lights LED0 if continuity on the docking pins is detected.
+/// Also prints to rtt continually to check how reliable the continuity is
+pub fn dock_continuity(b: &mut Board) -> ! {
+    loop {
+        b.delay.delay_ms(1u8);
+        if b.is_docked() {
+            rprintln!("docked");
+            b.leds.0.set_low().ok();
+        } else {
+            rprintln!("NOT docked");
+            b.leds.0.set_high().ok();
+        }
     }
 }
