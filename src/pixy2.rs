@@ -1,6 +1,8 @@
-use core::convert::{From, TryInto};
+use core::convert::{From, TryInto, TryFrom};
 use nrf52832_hal::gpio::{Output, Pin, PushPull};
 use nrf52832_hal::{spim, timer, Spim};
+use bitflags::bitflags;
+use core::default;
 
 const DEFAULT_ARGVAL: u32 = 0x8000_0000;
 const BUFFERSIZE: usize = 0x104;
@@ -25,6 +27,55 @@ const TYPE_REQUEST_LED: u8 = 0x14;
 const TYPE_REQUEST_LAMP: u8 = 0x16;
 const TYPE_REQUEST_FPS: u8 = 0x18;
 
+// I have no clue what CCC stands for but its general prefix for
+// object detection related code.
+const CCC_MAX_SIGNATURE: u32 = 7;
+const CCC_RESPONSE_BLOCKS: u8 = 0x21;
+const CCC_REQUEST_BLOCKS: u8 = 0x20;
+
+bitflags! {
+    pub struct SigMap: u8 {
+        const SIG1 = 1;
+        const SIG2 = 2;
+        const SIG3 = 4;
+        const SIG4 = 8;
+        const SIG5 = 16;
+        const SIG6 = 32;
+        const SIG7 = 64;
+        const COLOR_CODES = 128;
+        const ALL = 0xff;
+    }
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Block {
+   signature: u16,
+   x: u16,
+   y: u16,
+   width: u16,
+   height: u16,
+   angle: u16,
+   index: u8,
+   age: u8, 
+}
+
+const BLOCK_SIZE: usize = 14;
+
+impl Block {
+    fn from(bytes: &[u8; 14]) -> Block {
+        Block {
+            signature: u16::from_le_bytes(bytes[0..2].try_into().unwrap()),
+            x: u16::from_le_bytes(bytes[2..4].try_into().unwrap()),
+            y: u16::from_le_bytes(bytes[4..6].try_into().unwrap()),
+            width: u16::from_le_bytes(bytes[6..8].try_into().unwrap()),
+            height: u16::from_le_bytes(bytes[8..10].try_into().unwrap()),
+            angle: u16::from_le_bytes(bytes[10..12].try_into().unwrap()),
+            index: u8::from_le(bytes[12]),
+            age: u8::from_le(bytes[13]),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Pixy2Error {
     Error,
@@ -33,6 +84,36 @@ pub enum Pixy2Error {
     Timeout,
     ButtonOverride,
     ProgChanging,
+}
+
+impl Pixy2Error {
+    fn to_code(&self) -> i8 {
+        match self {
+            Error => -1,
+            Busy => -2,
+            ChecksumError => -3,
+            Timeout => -4,
+            ButtonOverride => -5,
+            ProgChanging => -6
+        }
+    }
+
+    fn from_code(code: i8) -> Pixy2Error {
+        use Pixy2Error::*;
+        match code {
+            -1 => Error,
+            -2 => Busy,
+            -3 => ChecksumError,
+            -4 => Timeout,
+            -5 => ButtonOverride,
+            -6 => ProgChanging,
+            _ => panic!("code out of range")
+        }
+    }
+
+    fn ok_code() -> i8 {
+        0
+    }
 }
 
 #[repr(C)]
@@ -67,6 +148,8 @@ pub struct Pixy2<S: spim::Instance, T: timer::Instance> {
     version: Version,
     frame_width: u16,
     pub frame_height: u16,
+    blocks: [Block; 18], // 18 = floor(BUFFERSIZE / sizeof(Block))
+    num_blocks: u8,
 }
 
 impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
@@ -87,6 +170,8 @@ impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
             version: Version::from(&[0; 16]),
             frame_width: 0,
             frame_height: 0,
+            blocks: [Block::from(&[0; 14]); 18],
+            num_blocks: 0,
         };
 
         pixy2.timer.disable_interrupt();
@@ -241,6 +326,44 @@ impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
             self.frame_height = u16::from_le_bytes(self.m_buf[2..4].try_into().unwrap());
             Ok(())
         }
+    }
+
+    fn get_blocks(&mut self, wait: bool, sigmap: SigMap, max_blocks: u8) -> Result<u8, Pixy2Error> {
+        self.num_blocks = 0;
+
+        loop {
+            self.m_buf[SEND_HEADER_SIZE + 0] = sigmap.bits;
+            self.m_buf[SEND_HEADER_SIZE + 1] = max_blocks;
+            self.m_length = 2;
+            self.m_type = CCC_REQUEST_BLOCKS;
+
+            self.send_packet()?;
+            self.recv_packet()?;
+
+            if self.m_type == CCC_RESPONSE_BLOCKS {
+                for i in 0..self.blocks.len() {
+                    self.blocks[i] = Block::from(&self.m_buf[i * BLOCK_SIZE.. (i+1) * BLOCK_SIZE]
+                        .try_into().unwrap());
+                }
+                self.num_blocks = u8::try_from(self.blocks.len()).unwrap();
+                return Ok(self.num_blocks);
+            } else if self.m_type == TYPE_RESPONSE_ERROR {
+                if self.m_buf[0] as i8 == Pixy2Error::Busy.to_code() {
+                    if !wait {
+                        return Err(Pixy2Error::Busy);
+                    }
+                } else if self.m_buf[0] as i8 != Pixy2Error::ProgChanging.to_code() {
+                    if self.m_buf[0] as i8 == Pixy2Error::ok_code() {
+                        return Ok(0);
+                    } else {
+                        return Err(Pixy2Error::from_code(self.m_buf[0] as i8));
+                    }
+                }
+            }
+
+            self.delay_us(500);
+        }
+        Err(Pixy2Error::Error)
     }
 }
 

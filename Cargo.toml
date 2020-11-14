@@ -14,6 +14,7 @@ nrf52832-hal = { version = "0.11.0", features = ["rt"] }
 lsm9ds1 = "0.1.0"
 arrayvec = { version = "0.5.2", default-features = false, features = [] }
 cortex-m-rtic = "0.5.5"
+bitflags = "1.2.1"
 
 # alloc-cortex-m = "0.4.0"
 
