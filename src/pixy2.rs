@@ -1,6 +1,6 @@
+use core::convert::{From, TryFrom, TryInto};
 use nrf52832_hal::gpio::{Output, Pin, PushPull};
-use nrf52832_hal::{spim, Spim, timer, Timer};
-use core::convert::{TryInto, From, TryFrom};
+use nrf52832_hal::{spim, timer, Spim, Timer};
 
 const DEFAULT_ARGVAL: u32 = 0x8000_0000;
 const BUFFERSIZE: usize = 0x104;
@@ -32,7 +32,7 @@ pub enum Pixy2Error {
     ChecksumError,
     Timeout,
     ButtonOverride,
-    ProgChanging
+    ProgChanging,
 }
 
 #[repr(C)]
@@ -51,8 +51,8 @@ impl Version {
             firmware_major: u8::from_le(bytes[2]),
             firmware_minor: u8::from_le(bytes[3]),
             firmware_build: u16::from_le_bytes(bytes[4..6].try_into().unwrap()),
-            firmware_type: bytes[6..].try_into().unwrap()
-        }    
+            firmware_type: bytes[6..].try_into().unwrap(),
+        }
     }
 }
 
@@ -71,9 +71,11 @@ pub struct Pixy2<S: spim::Instance, T: timer::Instance> {
 
 impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
     // spi must be 2MBs, MSBFIRST, MODE 3
-    pub fn new(mut spi: Spim<S>, mut chip_select: Pin<Output<PushPull>>,
-        timer_instance: T) -> Result<Self, Pixy2Error> {
-        
+    pub fn new(
+        mut spi: Spim<S>,
+        mut chip_select: Pin<Output<PushPull>>,
+        timer_instance: T,
+    ) -> Result<Self, Pixy2Error> {
         let mut pixy2 = Pixy2 {
             spi: spi,
             chip_select: chip_select,
@@ -90,21 +92,19 @@ impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
         pixy2.timer.disable_interrupt();
         pixy2.timer.set_oneshot();
         pixy2.timer.timer_start(u32::MAX);
-        
         let t0 = pixy2.millis();
         while pixy2.millis() < 5000 + t0 {
-            if pixy2.get_version().is_ok(){
+            if pixy2.get_version().is_ok() {
                 pixy2.get_resolution()?;
                 return Ok(pixy2);
             }
-            pixy2.delay_us(5000); // delay 5000 microseconds.    
+            pixy2.delay_us(5000); // delay 5000 microseconds.
         }
         Err(Pixy2Error::Timeout)
-
     }
 
     fn millis(&self) -> u32 {
-        self.timer.read_counter() / 1000    
+        self.timer.read_counter() / 1000
     }
 
     fn delay_us(&self, duration: u32) {
@@ -119,8 +119,15 @@ impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
         let mut cprev: u8 = 0;
         let mut start: u16;
 
+        // This is needed for making the transmit empty
+        // otherwise we'd run into a not in DMA region runtime error
+        let empty_tx: [u8; 0] = [];
         loop {
-            if self.spi.transfer(&mut self.chip_select, &mut buf).is_ok() {
+            if self
+                .spi
+                .transfer_split_uneven(&mut self.chip_select, &empty_tx, &mut buf)
+                .is_ok()
+            {
                 let c = buf[0];
                 start = u16::from(cprev);
                 start |= u16::from(c) << 8;
@@ -146,64 +153,66 @@ impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
             i += 1;
         }
 
-        Err(Pixy2Error::Error)    
+        Err(Pixy2Error::Error)
     }
 
     fn recv_packet(&mut self) -> Result<(), Pixy2Error> {
-
         if let Err(error) = self.get_sync() {
             return Err(error);
         }
 
+        // This is needed for making the transmit empty
+        // otherwise we'd run into a not in DMA region runtime error
+        let empty_tx: [u8; 0] = [];
         if self.m_cs {
-            if self.spi.transfer(&mut self.chip_select,
-                &mut self.m_buf[0..4]).is_err() {
-                return Err(Pixy2Error::Error);
-            }    
+            self.spi
+                .transfer_split_uneven(&mut self.chip_select, &empty_tx, &mut self.m_buf[0..4])
+                .map_err(|_| Pixy2Error::Error)?;
 
             self.m_type = self.m_buf[0];
             self.m_length = self.m_buf[1];
 
             // TODO verify this is correct based on endianness.
             let cs_serial = u16::from_le_bytes(self.m_buf[2..4].try_into().unwrap());
-            // self.m_buf[3] << 8 | self.m_buf[2];
-
-            if self.spi.transfer(&mut self.chip_select,
-                &mut self.m_buf[0..self.m_length as usize]).is_err() {
-                return Err(Pixy2Error::Error);
-            }
+            self.spi
+                .transfer_split_uneven(
+                    &mut self.chip_select,
+                    &empty_tx,
+                    &mut self.m_buf[0..self.m_length as usize],
+                )
+                .map_err(|_| Pixy2Error::Error)?;
 
             let cs_calc: u16 = cumulative_sum(&self.m_buf[0..self.m_length as usize]);
             if cs_serial != cs_calc {
                 return Err(Pixy2Error::ChecksumError);
             }
         } else {
-            if self.spi.transfer(&mut self.chip_select, &mut self.m_buf[0..2]).is_err() {
-                return Err(Pixy2Error::Error);
-            }
+            self.spi
+                .transfer_split_uneven(&mut self.chip_select, &empty_tx, &mut self.m_buf[0..2])
+                .map_err(|_| Pixy2Error::Error)?;
             self.m_type = self.m_buf[0];
             self.m_length = self.m_buf[1];
-
-            if self.spi.transfer(&mut self.chip_select,
-                &mut self.m_buf[0..self.m_length as usize]).is_err() {
-                return Err(Pixy2Error::Error);
-            }
+            self.spi
+                .transfer_split_uneven(
+                    &mut self.chip_select,
+                    &empty_tx,
+                    &mut self.m_buf[0..self.m_length as usize],
+                )
+                .map_err(|_| Pixy2Error::Error)?;
         }
         Ok(())
     }
 
     fn send_packet(&mut self) -> Result<(), Pixy2Error> {
-        self.m_buf[0] = u8::try_from(NO_CHECKSUM_SYNC & 0xff).unwrap();
-        self.m_buf[1] = u8::try_from(NO_CHECKSUM_SYNC >> 8).unwrap();
+        self.m_buf[0..2].copy_from_slice(&NO_CHECKSUM_SYNC.to_le_bytes());
         self.m_buf[2] = self.m_type;
         self.m_buf[3] = self.m_length;
-        if self.spi.write(&mut self.chip_select,
-             &self.m_buf[0..self.m_length as usize + SEND_HEADER_SIZE]).is_err() {
-            Err(Pixy2Error::Error)
-        } else {
-            Ok(())
-        }
-        
+        self.spi
+            .write(
+                &mut self.chip_select,
+                &self.m_buf[0..self.m_length as usize + SEND_HEADER_SIZE],
+            )
+            .map_err(|_| Pixy2Error::Error)
     }
 
     pub fn get_version(&mut self) -> Result<u8, Pixy2Error> {
