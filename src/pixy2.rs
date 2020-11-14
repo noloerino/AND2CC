@@ -2,7 +2,6 @@ use core::convert::{From, TryInto, TryFrom};
 use nrf52832_hal::gpio::{Output, Pin, PushPull};
 use nrf52832_hal::{spim, timer, Spim};
 use bitflags::bitflags;
-use core::default;
 
 const DEFAULT_ARGVAL: u32 = 0x8000_0000;
 const BUFFERSIZE: usize = 0x104;
@@ -46,17 +45,18 @@ bitflags! {
         const ALL = 0xff;
     }
 }
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Block {
-   signature: u16,
-   x: u16,
-   y: u16,
-   width: u16,
-   height: u16,
-   angle: u16,
-   index: u8,
-   age: u8, 
+   pub signature: u16,
+   pub x: u16,
+   pub y: u16,
+   pub width: u16,
+   pub height: u16,
+   pub angle: u16,
+   pub index: u8,
+   pub age: u8, 
 }
 
 const BLOCK_SIZE: usize = 14;
@@ -88,6 +88,7 @@ pub enum Pixy2Error {
 
 impl Pixy2Error {
     fn to_code(&self) -> i8 {
+        use Pixy2Error::*;
         match self {
             Error => -1,
             Busy => -2,
@@ -118,11 +119,11 @@ impl Pixy2Error {
 
 #[repr(C)]
 pub struct Version {
-    hardware: u16,
-    firmware_major: u8,
-    firmware_minor: u8,
-    firmware_build: u16,
-    firmware_type: [u8; 10],
+    pub hardware: u16,
+    pub firmware_major: u8,
+    pub firmware_minor: u8,
+    pub firmware_build: u16,
+    pub firmware_type: [u8; 10],
 }
 
 impl Version {
@@ -145,11 +146,11 @@ pub struct Pixy2<S: spim::Instance, T: timer::Instance> {
     m_buf: [u8; BUFFERSIZE],
     m_length: u8,
     m_type: u8,
-    version: Version,
-    frame_width: u16,
+    pub version: Version,
+    pub frame_width: u16,
     pub frame_height: u16,
-    blocks: [Block; 18], // 18 = floor(BUFFERSIZE / sizeof(Block))
-    num_blocks: u8,
+    pub blocks: [Block; 18], // 18 = floor(BUFFERSIZE / sizeof(Block))
+    pub num_blocks: u8,
 }
 
 impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
@@ -313,7 +314,7 @@ impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
         Err(Pixy2Error::Error)
     }
 
-    fn get_resolution(&mut self) -> Result<(), Pixy2Error> {
+    pub fn get_resolution(&mut self) -> Result<(), Pixy2Error> {
         self.m_length = 1;
         self.m_buf[SEND_HEADER_SIZE + 0] = 0;
         self.m_type = TYPE_REQUEST_RESOLUTION;
@@ -328,7 +329,7 @@ impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
         }
     }
 
-    fn get_blocks(&mut self, wait: bool, sigmap: SigMap, max_blocks: u8) -> Result<u8, Pixy2Error> {
+    pub fn get_blocks(&mut self, wait: bool, sigmap: SigMap, max_blocks: u8) -> Result<u8, Pixy2Error> {
         self.num_blocks = 0;
 
         loop {
@@ -341,11 +342,11 @@ impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
             self.recv_packet()?;
 
             if self.m_type == CCC_RESPONSE_BLOCKS {
-                for i in 0..self.blocks.len() {
+                self.num_blocks = self.m_length / u8::try_from(BUFFERSIZE).unwrap();
+                for i in 0..self.num_blocks as usize {
                     self.blocks[i] = Block::from(&self.m_buf[i * BLOCK_SIZE.. (i+1) * BLOCK_SIZE]
                         .try_into().unwrap());
                 }
-                self.num_blocks = u8::try_from(self.blocks.len()).unwrap();
                 return Ok(self.num_blocks);
             } else if self.m_type == TYPE_RESPONSE_ERROR {
                 if self.m_buf[0] as i8 == Pixy2Error::Busy.to_code() {
