@@ -108,14 +108,14 @@ impl Board {
         let pixy = Pixy2::new(spi_pixy, pins.pixy_chip_sel, p.TIMER0).unwrap();
         Board {
             uart,
-            delay: delay,
+            delay,
             display,
             imu,
             sensors,
             button_0: pins.button_0,
             switch_0: pins.switch_0,
             leds: pins.leds,
-            pixy: pixy,
+            pixy,
         }
     }
 

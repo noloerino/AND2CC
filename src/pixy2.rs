@@ -1,6 +1,6 @@
-use core::convert::{From, TryFrom, TryInto};
+use core::convert::{From, TryInto};
 use nrf52832_hal::gpio::{Output, Pin, PushPull};
-use nrf52832_hal::{spim, timer, Spim, Timer};
+use nrf52832_hal::{spim, timer, Spim};
 
 const DEFAULT_ARGVAL: u32 = 0x8000_0000;
 const BUFFERSIZE: usize = 0x104;
@@ -72,13 +72,13 @@ pub struct Pixy2<S: spim::Instance, T: timer::Instance> {
 impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
     // spi must be 2MBs, MSBFIRST, MODE 3
     pub fn new(
-        mut spi: Spim<S>,
-        mut chip_select: Pin<Output<PushPull>>,
+        spi: Spim<S>,
+        chip_select: Pin<Output<PushPull>>,
         timer_instance: T,
     ) -> Result<Self, Pixy2Error> {
         let mut pixy2 = Pixy2 {
-            spi: spi,
-            chip_select: chip_select,
+            spi,
+            chip_select,
             timer: timer_instance,
             m_cs: false,
             m_buf: [0; BUFFERSIZE],
@@ -152,8 +152,6 @@ impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
             }
             i += 1;
         }
-
-        Err(Pixy2Error::Error)
     }
 
     fn recv_packet(&mut self) -> Result<(), Pixy2Error> {
