@@ -5,6 +5,7 @@ mod buckler;
 mod error;
 mod examples;
 mod kobuki;
+mod pixy2;
 
 use core::default;
 use core::fmt::Write;
@@ -93,10 +94,11 @@ const APP: () = {
     #[idle(resources = [b])]
     fn idle(c: idle::Context) -> ! {
         let b = c.resources.b;
-        main_loop(b);
+        // main_loop(b);
         // Comment out main_loop and uncomment these to run sanity examples
         // examples::blink(b);
         // examples::display(b);
+        examples::pixy(b);
     }
 };
 

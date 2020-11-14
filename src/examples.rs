@@ -32,3 +32,11 @@ pub fn display(b: &mut Board) -> ! {
         b.display.row_1().write_str("this is row 1").ok();
     }
 }
+
+pub fn pixy(b: &mut Board) -> ! {
+    use core::fmt::Write;
+    loop {
+        b.delay.delay_ms(1u8);
+        b.display.row_0().write_fmt(format_args!("{}", b.pixy.frame_height)).ok();
+    }
+}

@@ -3,6 +3,7 @@
 
 use super::{lcd_display::*, lsm9ds1::*};
 use crate::kobuki::{actuator::*, sensors::*};
+use crate::pixy2::*;
 use core::fmt::Write;
 use nrf52832_hal::gpio::{Floating, Input, Level, Output, Pin, PullDown, PullUp, PushPull};
 use nrf52832_hal::{delay, gpio, pac, spim, twim, uarte};
@@ -73,6 +74,7 @@ pub struct Board {
     pub button_0: Pin<Input<PullUp>>,
     pub switch_0: Pin<Input<PullDown>>,
     pub leds: Leds,
+    pub pixy: Pixy2<pac::SPIM0, pac::TIMER0>
 }
 
 impl Board {
@@ -92,7 +94,7 @@ impl Board {
         );
         let spi1 = spim::Spim::new(p.SPIM1, pins.lcd_spi, spim::Frequency::M4, spim::MODE_2, 0);
 
-        // let spix = spim::Spim::new(p.SPIMX, pins.pixy2, spim::Frequency::M2, spim::MODE_3, 0);
+        let spi_pixy = spim::Spim::new(p.SPIM0, pins.pixy_spi, spim::Frequency::M2, spim::MODE_3, 0);
         
         // Initialize display
         let mut display = LcdDisplay::new(spi1, pins.lcd_chip_sel, &mut delay).unwrap();
@@ -102,6 +104,7 @@ impl Board {
         let twi0 = twim::Twim::new(p.TWIM0, pins.sensors_twi, twim::Frequency::K100);
         let imu = Imu::new(twi0, p.TIMER1);
         let sensors = Sensors::default();
+        let pixy = Pixy2::new(spi_pixy, pins.pixy_chip_sel, p.TIMER0).unwrap();
         Board {
             uart,
             delay: delay,
@@ -111,6 +114,7 @@ impl Board {
             button_0: pins.button_0,
             switch_0: pins.switch_0,
             leds: pins.leds,
+            pixy: pixy,
         }
     }
 
