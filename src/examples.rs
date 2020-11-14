@@ -32,3 +32,17 @@ pub fn display(b: &mut Board) -> ! {
         b.display.row_1().write_str("this is row 1").ok();
     }
 }
+
+pub fn drive_forward(b: &mut Board) -> ! {
+    loop {
+        b.delay.delay_ms(1u8);
+        b.actuator().drive_direct(100, 100).ok();
+    }
+}
+
+pub fn drive_reverse(b: &mut Board) -> ! {
+    loop {
+        b.delay.delay_ms(1u8);
+        b.actuator().drive_direct(-100, -100).ok();
+    }
+}

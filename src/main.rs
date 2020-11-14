@@ -97,6 +97,8 @@ const APP: () = {
         // Comment out main_loop and uncomment these to run sanity examples
         // examples::blink(b);
         // examples::display(b);
+        // examples::drive_forward(b);
+        // examples::drive_reverse(b);
     }
 };
 
