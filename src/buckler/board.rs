@@ -74,7 +74,7 @@ pub struct Board {
     pub button_0: Pin<Input<PullUp>>,
     pub switch_0: Pin<Input<PullDown>>,
     pub leds: Leds,
-    pub pixy: Pixy2<pac::SPIM0, pac::TIMER0>
+    pub pixy: Pixy2<pac::SPIM2, pac::TIMER0>
 }
 
 impl Board {
@@ -94,7 +94,7 @@ impl Board {
         );
         let spi1 = spim::Spim::new(p.SPIM1, pins.lcd_spi, spim::Frequency::M4, spim::MODE_2, 0);
 
-        let spi_pixy = spim::Spim::new(p.SPIM0, pins.pixy_spi, spim::Frequency::M2, spim::MODE_3, 0);
+        let spi_pixy = spim::Spim::new(p.SPIM2, pins.pixy_spi, spim::Frequency::M2, spim::MODE_3, 0);
         
         // Initialize display
         let mut display = LcdDisplay::new(spi1, pins.lcd_chip_sel, &mut delay).unwrap();

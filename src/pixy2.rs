@@ -51,7 +51,7 @@ impl Version {
             firmware_major: u8::from_le(bytes[2]),
             firmware_minor: u8::from_le(bytes[3]),
             firmware_build: u16::from_le_bytes(bytes[4..6].try_into().unwrap()),
-            firmware_type: bytes[7..].try_into().unwrap()
+            firmware_type: bytes[6..].try_into().unwrap()
         }    
     }
 }
@@ -59,7 +59,7 @@ impl Version {
 pub struct Pixy2<S: spim::Instance, T: timer::Instance> {
     spi: Spim<S>,
     chip_select: Pin<Output<PushPull>>,
-    timer: Timer<T, timer::OneShot>,
+    timer: T,
     m_cs: bool,
     m_buf: [u8; BUFFERSIZE],
     m_length: u8,
@@ -77,7 +77,7 @@ impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
         let mut pixy2 = Pixy2 {
             spi: spi,
             chip_select: chip_select,
-            timer: Timer::one_shot(timer_instance),
+            timer: timer_instance,
             m_cs: false,
             m_buf: [0; BUFFERSIZE],
             m_length: 0,
@@ -86,6 +86,10 @@ impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
             frame_width: 0,
             frame_height: 0,
         };
+
+        pixy2.timer.disable_interrupt();
+        pixy2.timer.set_oneshot();
+        pixy2.timer.timer_start(u32::MAX);
         
         let t0 = pixy2.millis();
         while pixy2.millis() < 5000 + t0 {
@@ -93,14 +97,19 @@ impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
                 pixy2.get_resolution()?;
                 return Ok(pixy2);
             }
-            pixy2.timer.delay(5000); // delay 5000 microseconds.    
+            pixy2.delay_us(5000); // delay 5000 microseconds.    
         }
         Err(Pixy2Error::Timeout)
 
     }
 
     fn millis(&self) -> u32 {
-        self.timer.read() / 1000    
+        self.timer.read_counter() / 1000    
+    }
+
+    fn delay_us(&self, duration: u32) {
+        let t0 = self.timer.read_counter();
+        while self.timer.read_counter() < t0 + duration {}
     }
 
     fn get_sync(&mut self) -> Result<(), Pixy2Error> {
@@ -130,7 +139,7 @@ impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
                 if j >= 4 {
                     return Err(Pixy2Error::Error);
                 }
-                self.timer.delay(25); // delay 25 microseconds
+                self.delay_us(25); // delay 25 microseconds
                 j += 1;
                 i = 0;
             }
