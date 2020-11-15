@@ -47,7 +47,7 @@ bitflags! {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Block {
     pub signature: u16,
     pub x: u16,

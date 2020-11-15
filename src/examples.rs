@@ -4,6 +4,8 @@
 #![allow(dead_code)]
 
 use crate::buckler::board::Board;
+use crate::pixy2;
+use core::fmt::Write;
 use embedded_hal::digital::v2::{InputPin, OutputPin};
 use embedded_hal::prelude::_embedded_hal_blocking_delay_DelayMs;
 use rtt_target::rprintln;
@@ -28,7 +30,6 @@ pub fn blink(b: &mut Board) -> ! {
 
 /// Writes to both display rows.
 pub fn display(b: &mut Board) -> ! {
-    use core::fmt::Write;
     loop {
         b.delay.delay_ms(1u8);
         b.display.row_0().write_str("this is row 0").ok();
@@ -36,8 +37,8 @@ pub fn display(b: &mut Board) -> ! {
     }
 }
 
+/// Writes pixy status to the display and continually prints block data to RTT.
 pub fn pixy(b: &mut Board) -> ! {
-    use core::fmt::Write;
     b.display
         .row_0()
         .write_fmt(format_args!("hw v: {}", b.pixy.version.hardware))
@@ -56,10 +57,7 @@ pub fn pixy(b: &mut Board) -> ! {
     );
     loop {
         b.delay.delay_ms(1u8);
-        if b.pixy
-            .get_blocks(false, crate::pixy2::SigMap::ALL, 10)
-            .is_err()
-        {
+        if b.pixy.get_blocks(false, pixy2::SigMap::ALL, 10).is_err() {
             continue;
         }
         for i in 0..b.pixy.num_blocks as usize {
@@ -104,6 +102,99 @@ pub fn dock_continuity(b: &mut Board) -> ! {
         } else {
             rprintln!("NOT docked");
             b.leds.0.set_high().ok();
+        }
+    }
+}
+
+/// Used to track state for target_block below
+#[derive(Debug)]
+enum TargetState {
+    Scan,
+    Drive,
+    Done,
+}
+
+/// Spins the robot in a circle until signature 1 is detected, at which point the robot will rotate
+/// until m_x of the component is at approximately 0.
+/// Line 1 of the display will print the state.
+/// If signature 1 is detected, line 0 of the display will print its x/y coordinates.
+/// When docking is detected, LED0 will be lit. After the initial docking contact, LED1 will
+/// continually be lit, while LED0 will change in response to a disconnect.
+pub fn target_block(b: &mut Board) -> ! {
+    let mut state = TargetState::Scan;
+    b.pixy.get_resolution().unwrap();
+    let x_mid = b.pixy.frame_width >> 1;
+    loop {
+        b.delay.delay_ms(1u8);
+        b.display
+            .row_1()
+            .write_fmt(format_args!("{:?}", state))
+            .ok();
+        match state {
+            TargetState::Scan => {
+                if b.pixy.get_blocks(false, pixy2::SigMap::ALL, 10).is_ok() {
+                    let mut sig_1_block: Option<pixy2::Block> = None;
+                    // Not very rustic :(
+                    for i in 0..b.pixy.num_blocks as usize {
+                        let block = b.pixy.blocks[i];
+                        if block.signature == 1 {
+                            sig_1_block = Some(block);
+                            break;
+                        }
+                    }
+                    const X_MID_TOL: u16 = 4;
+                    if let Some(block) = sig_1_block {
+                        rprintln!("ID'd block {:?}", block);
+                        b.display
+                            .row_0()
+                            .write_fmt(format_args!("goto ({}, {})", block.x, block.y))
+                            .ok();
+                        if block.x < x_mid + X_MID_TOL || block.x > x_mid - X_MID_TOL {
+                            // Proceed to drive
+                            rprintln!("we drive");
+                            state = TargetState::Drive;
+                            b.actuator().drive_direct(0, 0).ok();
+                        } else {
+                            // Make some adjustments
+                            if block.x > x_mid {
+                                // go left
+                                b.actuator().drive_direct(-70, 70).ok();
+                            } else {
+                                // go right
+                                b.actuator().drive_direct(70, -70).ok();
+                            }
+                        }
+                    } else {
+                        // Just keep spinning
+                        b.display.row_0().write_str("").ok();
+                        b.actuator().drive_direct(100, -100).ok();
+                    }
+                } else {
+                    // Just keep spinning
+                    b.display.row_0().write_str("").ok();
+                    b.actuator().drive_direct(100, -100).ok();
+                }
+            }
+            TargetState::Drive => {
+                // Just go until docked
+                b.display.row_0().write_str("zoom zoom").ok();
+                if b.is_docked() {
+                    rprintln!("done");
+                    state = TargetState::Done;
+                } else {
+                    b.actuator().drive_direct(-100, -100).ok();
+                }
+            }
+            TargetState::Done => {
+                b.display.row_0().write_str("").ok();
+                b.actuator().drive_direct(0, 0).ok();
+                b.leds.1.set_low().ok();
+                if b.is_docked() {
+                    b.leds.0.set_low().ok();
+                } else {
+                    b.leds.0.set_high().ok();
+                }
+            }
         }
     }
 }

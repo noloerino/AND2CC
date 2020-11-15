@@ -8,6 +8,7 @@ use core::fmt::Write;
 use embedded_hal::digital::v2::{InputPin, OutputPin};
 use nrf52832_hal::gpio::{Floating, Input, Level, Output, Pin, PullDown, PullUp, PushPull};
 use nrf52832_hal::{delay, gpio, pac, spim, twim, uarte};
+use rtt_target::rprintln;
 
 pub type Leds = (
     Pin<Output<PushPull>>,
@@ -115,7 +116,9 @@ impl Board {
         let twi0 = twim::Twim::new(p.TWIM0, pins.sensors_twi, twim::Frequency::K100);
         let imu = Imu::new(twi0, p.TIMER1);
         let sensors = Sensors::default();
+        rprintln!("[Init] Blocking on pixy...");
         let pixy = Pixy2::new(spi_pixy, pins.pixy_chip_sel, p.TIMER0).unwrap();
+        rprintln!("[Init] Connected to pixy...");
         let mut b = Board {
             uart,
             delay,
