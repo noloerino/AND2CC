@@ -5,6 +5,7 @@ use super::{lcd_display::*, lsm9ds1::*};
 use crate::kobuki::{actuator::*, sensors::*};
 use crate::pixy2::*;
 use core::fmt::Write;
+use embedded_hal::digital::v2::{InputPin, OutputPin};
 use nrf52832_hal::gpio::{Floating, Input, Level, Output, Pin, PullDown, PullUp, PushPull};
 use nrf52832_hal::{delay, gpio, pac, spim, twim, uarte};
 
@@ -29,6 +30,9 @@ pub struct Pins {
     pub leds: Leds,
     pub uart_rx: Pin<Input<Floating>>,
     pub uart_tx: Pin<Output<PushPull>>,
+    // These pins are repurposed from Grove A1/A0, respectively
+    pub dock_power: Pin<Output<PushPull>>,
+    pub dock_detect: Pin<Input<PullDown>>,
 }
 
 impl Pins {
@@ -60,6 +64,8 @@ impl Pins {
             ),
             uart_rx: p.p0_08.into_floating_input().degrade(),
             uart_tx: p.p0_06.into_push_pull_output(Level::High).degrade(),
+            dock_power: p.p0_03.into_push_pull_output(Level::High).degrade(),
+            dock_detect: p.p0_04.into_pulldown_input().degrade(),
         }
     }
 }
@@ -75,6 +81,10 @@ pub struct Board {
     pub switch_0: Pin<Input<PullDown>>,
     pub leds: Leds,
     pub pixy: Pixy2<pac::SPIM2, pac::TIMER0>,
+    // Even though we no longer need the docking power pin once it's been driven high,
+    // we need to still maintain ownership over it to prevent other objects from reusing it.
+    dock_power: Pin<Output<PushPull>>,
+    dock_detect: Pin<Input<PullDown>>,
 }
 
 impl Board {
@@ -106,7 +116,7 @@ impl Board {
         let imu = Imu::new(twi0, p.TIMER1);
         let sensors = Sensors::default();
         let pixy = Pixy2::new(spi_pixy, pins.pixy_chip_sel, p.TIMER0).unwrap();
-        Board {
+        let mut b = Board {
             uart,
             delay,
             display,
@@ -116,7 +126,19 @@ impl Board {
             switch_0: pins.switch_0,
             leds: pins.leds,
             pixy,
-        }
+            dock_power: pins.dock_power,
+            dock_detect: pins.dock_detect,
+        };
+        b.dock_power.set_high().unwrap();
+        b
+    }
+
+    /// Returns true if a connection is detected between dock_power and dock_detect by reading
+    /// a digital value off the detect pin. This abstraction is here to allow us to switch between
+    /// pull up and pull down as needed.
+    pub fn is_docked(&self) -> bool {
+        // Detect is pull down, so check if it's high
+        self.dock_detect.is_high().unwrap()
     }
 
     pub fn poll_sensors(&mut self) -> Result<(), uarte::Error> {
