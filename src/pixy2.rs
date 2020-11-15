@@ -1,7 +1,7 @@
-use core::convert::{From, TryInto, TryFrom};
+use bitflags::bitflags;
+use core::convert::{From, TryFrom, TryInto};
 use nrf52832_hal::gpio::{Output, Pin, PushPull};
 use nrf52832_hal::{spim, timer, Spim};
-use bitflags::bitflags;
 
 const DEFAULT_ARGVAL: u32 = 0x8000_0000;
 const BUFFERSIZE: usize = 0x104;
@@ -49,14 +49,14 @@ bitflags! {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Block {
-   pub signature: u16,
-   pub x: u16,
-   pub y: u16,
-   pub width: u16,
-   pub height: u16,
-   pub angle: u16,
-   pub index: u8,
-   pub age: u8, 
+    pub signature: u16,
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+    pub angle: u16,
+    pub index: u8,
+    pub age: u8,
 }
 
 const BLOCK_SIZE: usize = 14;
@@ -95,7 +95,7 @@ impl Pixy2Error {
             ChecksumError => -3,
             Timeout => -4,
             ButtonOverride => -5,
-            ProgChanging => -6
+            ProgChanging => -6,
         }
     }
 
@@ -108,7 +108,7 @@ impl Pixy2Error {
             -4 => Timeout,
             -5 => ButtonOverride,
             -6 => ProgChanging,
-            _ => panic!("code out of range")
+            _ => panic!("code out of range"),
         }
     }
 
@@ -329,7 +329,12 @@ impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
         }
     }
 
-    pub fn get_blocks(&mut self, wait: bool, sigmap: SigMap, max_blocks: u8) -> Result<u8, Pixy2Error> {
+    pub fn get_blocks(
+        &mut self,
+        wait: bool,
+        sigmap: SigMap,
+        max_blocks: u8,
+    ) -> Result<u8, Pixy2Error> {
         self.num_blocks = 0;
 
         loop {
@@ -342,10 +347,13 @@ impl<S: spim::Instance, T: timer::Instance> Pixy2<S, T> {
             self.recv_packet()?;
 
             if self.m_type == CCC_RESPONSE_BLOCKS {
-                self.num_blocks = self.m_length / u8::try_from(BUFFERSIZE).unwrap();
+                self.num_blocks = self.m_length / u8::try_from(BLOCK_SIZE).unwrap();
                 for i in 0..self.num_blocks as usize {
-                    self.blocks[i] = Block::from(&self.m_buf[i * BLOCK_SIZE.. (i+1) * BLOCK_SIZE]
-                        .try_into().unwrap());
+                    self.blocks[i] = Block::from(
+                        &self.m_buf[i * BLOCK_SIZE..(i + 1) * BLOCK_SIZE]
+                            .try_into()
+                            .unwrap(),
+                    );
                 }
                 return Ok(self.num_blocks);
             } else if self.m_type == TYPE_RESPONSE_ERROR {
