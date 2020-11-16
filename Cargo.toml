@@ -28,7 +28,15 @@ name = "ddd"
 test = false
 bench = false
 
+[profile.dev]
+opt-level = "z"
+[profile.dev.package."*"]
+opt-level = "z"
+
 [profile.release]
+opt-level = "z" # Optimize for binary size
 codegen-units = 1 # better optimizations
 debug = true # symbols are nice and they don't increase the size on Flash
 lto = true # better optimizations
+[profile.release.package."*"]
+opt-level = "z"
