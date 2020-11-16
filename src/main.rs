@@ -82,12 +82,6 @@ const APP: () = {
         let p: hal::pac::Peripherals = cx.device;
         let c: hal::pac::CorePeripherals = cx.core;
         let mut b = buckler::board::Board::new(p, c);
-        rprintln!("[Init] Initialization complete; waiting for first sensor poll from Romi");
-        // Block until UART connection is made
-        b.poll_sensors().unwrap();
-        rprintln!("[Init] First sensor poll succeedeed; connected to Romi");
-        b.display.row_0().write_str("Buckler online!").ok();
-        b.display.row_1().clear().ok();
         init::LateResources { b }
     }
 
@@ -98,11 +92,11 @@ const APP: () = {
         // Comment out main_loop and uncomment these to run sanity examples
         // examples::blink(b);
         // examples::display(b);
-        // examples::pixy(b);
+        examples::pixy(b);
         // examples::drive_forward(b);
         // examples::drive_reverse(b);
         // examples::dock_continuity(b);
-        examples::target_block(b);
+        // examples::target_block(b);
     }
 };
 

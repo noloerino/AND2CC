@@ -92,7 +92,7 @@ impl Board {
     pub fn new(p: pac::Peripherals, c: pac::CorePeripherals) -> Board {
         let pins = Pins::new(p.P0);
         let mut delay = delay::Delay::new(c.SYST);
-        let uart = uarte::Uarte::new(
+        let mut uart = uarte::Uarte::new(
             p.UARTE0,
             uarte::Pins {
                 rxd: pins.uart_rx,
@@ -115,7 +115,12 @@ impl Board {
         // Initialize IMU
         let twi0 = twim::Twim::new(p.TWIM0, pins.sensors_twi, twim::Frequency::K100);
         let imu = Imu::new(twi0, p.TIMER1);
-        let sensors = Sensors::default();
+        let mut sensors = Sensors::default();
+        // Block until UART connection is made
+        // This goes before pixy connection to make sure pixy is powered as well
+        rprintln!("[Init] Waiting for first sensor poll from Romi");
+        SensorPoller::poll(&mut uart, &mut sensors).unwrap();
+        rprintln!("[Init] First sensor poll succeedeed; connected to Romi");
         rprintln!("[Init] Blocking on pixy...");
         let pixy = Pixy2::new(spi_pixy, pins.pixy_chip_sel, p.TIMER0).unwrap();
         rprintln!("[Init] Connected to pixy...");
@@ -133,6 +138,9 @@ impl Board {
             dock_detect: pins.dock_detect,
         };
         b.dock_power.set_high().unwrap();
+        b.display.row_0().write_str("Buckler online!").ok();
+        b.display.row_1().clear().ok();
+        rprintln!("[Init] Initialization complete");
         b
     }
 
