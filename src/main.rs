@@ -81,7 +81,7 @@ const APP: () = {
         rtt_init_print!();
         let p: hal::pac::Peripherals = cx.device;
         let c: hal::pac::CorePeripherals = cx.core;
-        let mut b = buckler::board::Board::new(p, c);
+        let b = buckler::board::Board::new(p, c);
         init::LateResources { b }
     }
 
@@ -92,11 +92,11 @@ const APP: () = {
         // Comment out main_loop and uncomment these to run sanity examples
         // examples::blink(b);
         // examples::display(b);
-        examples::pixy(b);
+        // examples::pixy(b);
         // examples::drive_forward(b);
         // examples::drive_reverse(b);
         // examples::dock_continuity(b);
-        // examples::target_block(b);
+        examples::target_block(b);
     }
 };
 

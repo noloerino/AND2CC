@@ -140,6 +140,7 @@ impl Board {
         b.dock_power.set_high().unwrap();
         b.display.row_0().write_str("Buckler online!").ok();
         b.display.row_1().clear().ok();
+        b.actuator().drive_direct(0, 0).ok();
         rprintln!("[Init] Initialization complete");
         b
     }

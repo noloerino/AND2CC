@@ -125,7 +125,8 @@ pub fn target_block(b: &mut Board) -> ! {
     b.pixy.get_resolution().unwrap();
     let x_mid = b.pixy.frame_width >> 1;
     loop {
-        b.delay.delay_ms(1u8);
+        // 1ms causes driving to screw up
+        b.delay.delay_ms(10u8);
         b.display
             .row_1()
             .write_fmt(format_args!("{:?}", state))
@@ -154,25 +155,26 @@ pub fn target_block(b: &mut Board) -> ! {
                             rprintln!("we drive");
                             state = TargetState::Drive;
                             b.actuator().drive_direct(0, 0).ok();
+                            b.delay.delay_ms(100u8);
                         } else {
                             // Make some adjustments
                             if block.x > x_mid {
                                 // go left
-                                b.actuator().drive_direct(-70, 70).ok();
+                                b.actuator().drive_direct(-60, 60).ok();
                             } else {
                                 // go right
-                                b.actuator().drive_direct(70, -70).ok();
+                                b.actuator().drive_direct(60, -60).ok();
                             }
                         }
                     } else {
                         // Just keep spinning
                         b.display.row_0().write_str("").ok();
-                        b.actuator().drive_direct(100, -100).ok();
+                        b.actuator().drive_direct(60, -60).ok();
                     }
                 } else {
                     // Just keep spinning
                     b.display.row_0().write_str("").ok();
-                    b.actuator().drive_direct(100, -100).ok();
+                    b.actuator().drive_direct(60, -60).ok();
                 }
             }
             TargetState::Drive => {
@@ -182,7 +184,7 @@ pub fn target_block(b: &mut Board) -> ! {
                     rprintln!("done");
                     state = TargetState::Done;
                 } else {
-                    b.actuator().drive_direct(-100, -100).ok();
+                    b.actuator().drive_direct(-60, -60).unwrap();
                 }
             }
             TargetState::Done => {
