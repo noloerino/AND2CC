@@ -80,12 +80,15 @@ const APP: () = {
     fn init(cx: init::Context) -> init::LateResources {
         rtt_init_print!();
         let p: hal::pac::Peripherals = cx.device;
-        // Enable pin reset before anything else
-        unsafe {
-            p.UICR.pselreset[0].write(|w| w.pin().bits(21));
-            p.UICR.pselreset[1].write(|w| w.pin().bits(21));
-        }
         let c: hal::pac::CorePeripherals = cx.core;
+        // Enable pin reset before anything else
+        if p.UICR.pselreset[0].read().bits() != 21 || p.UICR.pselreset[1].read().bits() != 21 {
+            unsafe {
+                p.UICR.pselreset[0].write(|w| w.pin().bits(21));
+                p.UICR.pselreset[1].write(|w| w.pin().bits(21));
+            }
+            hal::pac::SCB::sys_reset();
+        }
         let b = buckler::board::Board::new(p, c);
         init::LateResources { b }
     }

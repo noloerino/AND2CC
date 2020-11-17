@@ -20,6 +20,7 @@ fn HardFault(ef: &ExceptionFrame) -> ! {
 }
 
 fn dead_loop() -> ! {
+    cortex_m::interrupt::disable();
     loop {
         cortex_m::asm::bkpt();
     }
