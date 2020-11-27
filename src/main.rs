@@ -1,6 +1,7 @@
 #![no_main]
 #![no_std]
 
+mod ble_service;
 mod buckler;
 mod error;
 mod examples;
@@ -15,11 +16,13 @@ use rtic::app;
 use rtt_target::{rprintln, rtt_init_print};
 use rubble::l2cap::{BleChannelMap, L2CAPState};
 use rubble::link::queue::{PacketQueue, SimpleQueue};
-use rubble::link::{ad_structure::AdStructure, LinkLayer, Responder, MIN_PDU_BUF};
+use rubble::link::{
+    ad_structure::AdStructure, AddressKind, DeviceAddress, LinkLayer, Responder, MIN_PDU_BUF,
+};
 use rubble::time::{Duration, Timer};
 use rubble::{config::Config, gatt::BatteryServiceAttrs, security::NoSecurity};
 use rubble_nrf5x::radio::{BleRadio, PacketBuffer};
-use rubble_nrf5x::{timer::BleTimer, utils::get_device_address};
+use rubble_nrf5x::timer::BleTimer;
 
 const DETECT_RECALIBRATE_M: f32 = 1.0;
 const DRIVE_SPEED: i16 = 70;
@@ -135,7 +138,10 @@ const APP: () = {
         // Everything here is copied from the demo w/ slight modification, minus serial and logger
         let _clocks = hal::clocks::Clocks::new(p.CLOCK).enable_ext_hfosc();
         let ble_timer = BleTimer::init(p.TIMER0);
-        let device_address = get_device_address();
+        // Device address is transmitted by LSB first
+        // c0:98:e5:49:xx:xx is specified by the lab
+        let device_address =
+            DeviceAddress::new([0x01, 0x00, 0x49, 0xE5, 0x98, 0xC0], AddressKind::Public);
         let mut radio = BleRadio::new(
             p.RADIO,
             &p.FICR,
