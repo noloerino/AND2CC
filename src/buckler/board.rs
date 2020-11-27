@@ -81,15 +81,25 @@ pub struct Board {
     pub button_0: Pin<Input<PullUp>>,
     pub switch_0: Pin<Input<PullDown>>,
     pub leds: Leds,
-    pub pixy: Pixy2<pac::SPIM2, pac::TIMER0>,
+    pub pixy: Pixy2<pac::SPIM2, pac::TIMER2>,
     // Even though we no longer need the docking power pin once it's been driven high,
     // we need to still maintain ownership over it to prevent other objects from reusing it.
     dock_power: Pin<Output<PushPull>>,
     dock_detect: Pin<Input<PullDown>>,
 }
 
+pub struct BoardInitResources {
+    pub P0: pac::P0,
+    pub UARTE0: pac::UARTE0,
+    pub SPIM1: pac::SPIM1,
+    pub SPIM2: pac::SPIM2,
+    pub TWIM0: pac::TWIM0,
+    pub TIMER1: pac::TIMER1,
+    pub TIMER2: pac::TIMER2,
+}
+
 impl Board {
-    pub fn new(p: pac::Peripherals, c: pac::CorePeripherals) -> Board {
+    pub fn new(p: BoardInitResources, c: pac::CorePeripherals) -> Board {
         let pins = Pins::new(p.P0);
         let mut delay = delay::Delay::new(c.SYST);
         let mut uart = uarte::Uarte::new(
@@ -122,7 +132,7 @@ impl Board {
         SensorPoller::poll(&mut uart, &mut sensors).unwrap();
         rprintln!("[Init] First sensor poll succeedeed; connected to Romi");
         rprintln!("[Init] Blocking on pixy...");
-        let pixy = Pixy2::new(spi_pixy, pins.pixy_chip_sel, p.TIMER0).unwrap();
+        let pixy = Pixy2::new(spi_pixy, pins.pixy_chip_sel, p.TIMER2).unwrap();
         rprintln!("[Init] Connected to pixy...");
         let mut b = Board {
             uart,

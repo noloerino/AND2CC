@@ -19,3 +19,8 @@ The structure of this repository is loosely based on nrf-hal's examples, which c
 
 To run GDB, simply run `make gdb` --- this will open a GDB server in a new terminal window, and GDB
 itself in the terminal the command was run in.
+
+## BLE
+BLE functionality is provided by the [rubble](https://github.com/jonas-schievink/rubble) crate.
+Most of the framework for setting up the bluetooh module comes from their demo, which can be found
+here (https://github.com/jonas-schievink/rubble/tree/master/demos/nrf52-demo).

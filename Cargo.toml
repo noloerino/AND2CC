@@ -15,12 +15,17 @@ lsm9ds1 = "0.1.0"
 arrayvec = { version = "0.5.2", default-features = false, features = [] }
 cortex-m-rtic = "0.5.5"
 bitflags = "1.2.1"
-
+# Build this from git since the crates version is kinda old
+rubble = { git = "https://github.com/jonas-schievink/rubble" }
 # alloc-cortex-m = "0.4.0"
 
 [dependencies.embedded-hal]
 version = "0.2.3"
 features = ["unproven"]
+
+[dependencies.rubble-nrf5x]
+git = "https://github.com/jonas-schievink/rubble"
+features = ["52832"]
 
 # this lets you use `cargo fix`!
 [[bin]]
