@@ -20,7 +20,7 @@ use rubble::link::{
     ad_structure::AdStructure, AddressKind, DeviceAddress, LinkLayer, Responder, MIN_PDU_BUF,
 };
 use rubble::time::{Duration, Timer};
-use rubble::{config::Config, gatt::BatteryServiceAttrs, security::NoSecurity};
+use rubble::{config::Config, security::NoSecurity};
 use rubble_nrf5x::radio::{BleRadio, PacketBuffer};
 use rubble_nrf5x::timer::BleTimer;
 
@@ -84,7 +84,7 @@ pub enum BleConfig {}
 impl Config for BleConfig {
     type Timer = BleTimer<hal::pac::TIMER0>;
     type Transmitter = BleRadio;
-    type ChannelMapper = BleChannelMap<BatteryServiceAttrs, NoSecurity>;
+    type ChannelMapper = BleChannelMap<ble_service::RomiServiceAttrs, NoSecurity>;
     type PacketQueue = &'static mut SimpleQueue;
 }
 
@@ -140,8 +140,10 @@ const APP: () = {
         let ble_timer = BleTimer::init(p.TIMER0);
         // Device address is transmitted by LSB first
         // c0:98:e5:49:xx:xx is specified by the lab
+        // If NRF connect is displaying something weird, it's probably some caching issue
+        // which can be circumvented by changing the LSB
         let device_address =
-            DeviceAddress::new([0x01, 0x00, 0x49, 0xE5, 0x98, 0xC0], AddressKind::Public);
+            DeviceAddress::new([0x03, 0x00, 0x49, 0xE5, 0x98, 0xC0], AddressKind::Public);
         let mut radio = BleRadio::new(
             p.RADIO,
             &p.FICR,
@@ -156,7 +158,9 @@ const APP: () = {
         let ble_r = Responder::new(
             tx,
             rx,
-            L2CAPState::new(BleChannelMap::with_attributes(BatteryServiceAttrs::new())),
+            L2CAPState::new(BleChannelMap::with_attributes(
+                ble_service::RomiServiceAttrs::new(),
+            )),
         );
         // Send advertisement and set up regular interrupt
         let next_update = ble_ll
@@ -236,8 +240,8 @@ const APP: () = {
         let b = c.resources.b;
         // main_loop(b);
         // Comment out main_loop and uncomment these to run sanity examples
-        // examples::blink(b);
-        examples::display(b);
+        examples::blink(b);
+        // examples::display(b);
         // examples::pixy(b);
         // examples::drive_forward(b);
         // examples::drive_reverse(b);
