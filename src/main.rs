@@ -1,6 +1,7 @@
 #![no_main]
 #![no_std]
 
+mod ble_channel;
 mod ble_service;
 mod buckler;
 mod error;

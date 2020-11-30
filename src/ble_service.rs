@@ -30,7 +30,7 @@ const PRIMARY_SERVICE_UUID16: Uuid16 = Uuid16(0x2800);
 const CHARACTERISTIC_UUID16: Uuid16 = Uuid16(0x2803);
 
 const LED_CHAR_DECL_VALUE: [u8; 19] = [
-    0x02 | 0x08, // 1 byte properties: read = 0x02, write request/resposne = 0x08
+    0x02 | 0x08, // 1 byte properties: read = 0x02, write request/response = 0x08
     // 2 byte handle pointing to characteristic value
     0x03,
     0x00,

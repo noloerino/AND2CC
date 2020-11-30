@@ -212,9 +212,9 @@ dependencies = [
 
 [[package]]
 name = "fixed"
-version = "1.4.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7199a77adc07a67f7946fc69f1ff2f37651190949af1496506230b30e4c8784"
+checksum = "ac9066245905bb98fca1671fe6fbb1ae7f6083e824d2411c4d0f5663fec466d8"
 dependencies = [
  "typenum",
 ]
@@ -397,9 +397,9 @@ checksum = "90bde5296fc891b0cef12a6d03ddccc162ce7b2aff54160af9338f8d40df6d19"
 
 [[package]]
 name = "rtic-core"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab51fe832317e805f869b3d859f91aadf855c2c3da51f9b84bc645c201597158"
+checksum = "8bd58a6949de8ff797a346a28d9f13f7b8f54fa61bb5e3cb0985a4efb497a5ef"
 
 [[package]]
 name = "rtic-syntax"
@@ -425,7 +425,7 @@ dependencies = [
 [[package]]
 name = "rubble"
 version = "0.0.3"
-source = "git+https://github.com/jonas-schievink/rubble#6bc46da68176776ef36f31da5879f7a422cdd6c5"
+source = "git+https://github.com/noloerino/rubble#1cb7f614db3184f5c7a85752fe5a496a3c54a843"
 dependencies = [
  "bitflags",
  "heapless",
@@ -437,7 +437,7 @@ dependencies = [
 [[package]]
 name = "rubble-nrf5x"
 version = "0.0.3"
-source = "git+https://github.com/jonas-schievink/rubble#6bc46da68176776ef36f31da5879f7a422cdd6c5"
+source = "git+https://github.com/noloerino/rubble#1cb7f614db3184f5c7a85752fe5a496a3c54a843"
 dependencies = [
  "nrf52832-hal",
  "rubble",
@@ -494,9 +494,9 @@ checksum = "343f3f510c2915908f155e94f17220b19ccfacf2a64a2a5d8004f2c3e311e7fd"
 
 [[package]]
 name = "syn"
-version = "1.0.48"
+version = "1.0.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc371affeffc477f42a221a1e4297aedcea33d47d19b61455588bd9d8f6b19ac"
+checksum = "6c1e438504729046a5cfae47f97c30d6d083c7d91d94603efdae3477fc070d4c"
 dependencies = [
  "proc-macro2",
  "quote",
