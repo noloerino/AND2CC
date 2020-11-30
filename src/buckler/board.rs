@@ -71,9 +71,77 @@ impl Pins {
     }
 }
 
+/// Manages the UARTE unit.
+///
+/// Methods requiring UART communication have unsafe implementation details because we wish to
+/// activate/deactivate the UART module to save power; since instantiating Uarte requires taking
+/// ownership, we end up having to coerce &mut UartMngr to UartMngr.
+pub struct UartMngr {
+    uart: pac::UARTE0,
+    uart_rx: Pin<Input<Floating>>,
+    uart_tx: Pin<Output<PushPull>>,
+}
+
+impl UartMngr {
+    pub fn poll_sensors(&mut self, sensors: &mut Sensors) -> Result<(), uarte::Error> {
+        // To allow the API to take an &mut self rather than consuming self, we need to do some
+        // unsafe things
+        use core::ptr;
+        let mut uarte = unsafe { ptr::read(self) }.into_uarte();
+        let r = SensorPoller::poll(&mut uarte, sensors);
+        // Release UARTE resource
+        unsafe {
+            *(self as *mut Self) = uarte.into();
+        }
+        r
+    }
+
+    pub fn into_uarte(self) -> uarte::Uarte<pac::UARTE0> {
+        uarte::Uarte::new(
+            self.uart,
+            uarte::Pins {
+                rxd: self.uart_rx,
+                txd: self.uart_tx,
+                cts: None,
+                rts: None,
+            },
+            pac::uarte0::config::PARITY_A::EXCLUDED,
+            pac::uarte0::baudrate::BAUDRATE_A::BAUD115200,
+        )
+    }
+
+    pub fn drive_direct(
+        &mut self,
+        left_wheel_speed: i16,
+        right_wheel_speed: i16,
+    ) -> Result<(), uarte::Error> {
+        // To allow the API to take an &mut self rather than consuming self, we need to do some
+        // unsafe things
+        use core::ptr;
+        let mut uarte = unsafe { ptr::read(self) }.into_uarte();
+        let r = Actuator::new(&mut uarte).drive_direct(left_wheel_speed, right_wheel_speed);
+        // Release UARTE resource
+        unsafe {
+            *(self as *mut Self) = uarte.into();
+        }
+        r
+    }
+}
+
+impl From<uarte::Uarte<pac::UARTE0>> for UartMngr {
+    fn from(other: uarte::Uarte<pac::UARTE0>) -> Self {
+        let (uart, uarte::Pins { rxd, txd, .. }) = other.free();
+        Self {
+            uart,
+            uart_rx: rxd,
+            uart_tx: txd,
+        }
+    }
+}
+
 /// Provides access to Buckler sensors, actuators, and pins not used elsewhere.
 pub struct Board {
-    uart: uarte::Uarte<pac::UARTE0>,
+    uart_mngr: UartMngr,
     pub display: LcdDisplay<pac::SPIM1>,
     pub imu: Imu<pac::TWIM0, pac::TIMER1>,
     pub sensors: Sensors,
@@ -101,17 +169,11 @@ pub struct BoardInitResources {
 impl Board {
     pub fn new(p: BoardInitResources, _c: pac::CorePeripherals) -> Board {
         let pins = Pins::new(p.P0);
-        let mut uart = uarte::Uarte::new(
-            p.UARTE0,
-            uarte::Pins {
-                rxd: pins.uart_rx,
-                txd: pins.uart_tx,
-                cts: None,
-                rts: None,
-            },
-            pac::uarte0::config::PARITY_A::EXCLUDED,
-            pac::uarte0::baudrate::BAUDRATE_A::BAUD115200,
-        );
+        let uart_mngr = UartMngr {
+            uart: p.UARTE0,
+            uart_rx: pins.uart_rx,
+            uart_tx: pins.uart_tx,
+        };
         let spi1 = spim::Spim::new(p.SPIM1, pins.lcd_spi, spim::Frequency::M4, spim::MODE_2, 0);
 
         let spi_pixy =
@@ -128,13 +190,14 @@ impl Board {
         // Block until UART connection is made
         // This goes before pixy connection to make sure pixy is powered as well
         rprintln!("[Init] Waiting for first sensor poll from Romi");
-        SensorPoller::poll(&mut uart, &mut sensors).unwrap();
+        let mut uarte = uart_mngr.into_uarte();
+        SensorPoller::poll(&mut uarte, &mut sensors).unwrap();
         rprintln!("[Init] First sensor poll succeedeed; connected to Romi");
         rprintln!("[Init] Blocking on pixy...");
         let pixy = Pixy2::new(spi_pixy, pins.pixy_chip_sel, p.TIMER2).unwrap();
         rprintln!("[Init] Connected to pixy...");
         let mut b = Board {
-            uart,
+            uart_mngr: uarte.into(),
             display,
             imu,
             sensors,
@@ -148,7 +211,7 @@ impl Board {
         b.dock_power.set_high().unwrap();
         b.display.row_0().write_str("Buckler online!").ok();
         b.display.row_1().clear().ok();
-        b.actuator().drive_direct(0, 0).ok();
+        b.uart_mngr.drive_direct(0, 0).ok();
         rprintln!("[Init] Initialization complete");
         b
     }
@@ -162,10 +225,15 @@ impl Board {
     }
 
     pub fn poll_sensors(&mut self) -> Result<(), uarte::Error> {
-        SensorPoller::poll(&mut self.uart, &mut self.sensors)
+        self.uart_mngr.poll_sensors(&mut self.sensors)
     }
 
-    pub fn actuator(&mut self) -> Actuator<pac::UARTE0> {
-        Actuator::new(&mut self.uart)
+    pub fn drive_direct(
+        &mut self,
+        left_wheel_speed: i16,
+        right_wheel_speed: i16,
+    ) -> Result<(), uarte::Error> {
+        self.uart_mngr
+            .drive_direct(left_wheel_speed, right_wheel_speed)
     }
 }

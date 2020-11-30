@@ -270,7 +270,7 @@ fn main_loop(b: &mut buckler::board::Board) -> ! {
                     b.imu.restart_gyro_integration();
                     top_state = TopState::Detect(DetectState::Scan);
                 } else {
-                    b.actuator().drive_direct(0, 0).ok();
+                    b.drive_direct(0, 0).ok();
                 }
             }
             Detect(detect_state) => {
@@ -318,7 +318,7 @@ impl DetectState {
                         .row_1()
                         .write_fmt(format_args!("SCAN: {:.1}", angle))
                         .ok();
-                    b.actuator().drive_direct(DRIVE_SPEED, -DRIVE_SPEED).ok();
+                    b.drive_direct(DRIVE_SPEED, -DRIVE_SPEED).ok();
                     Scan
                 }
             }
@@ -337,7 +337,7 @@ impl DetectState {
                 } else {
                     // Drive robot backwards until 1m has been traversed, at which point we attempt
                     // to reorient just to be safe
-                    b.actuator().drive_direct(-DRIVE_SPEED, -DRIVE_SPEED).ok();
+                    b.drive_direct(-DRIVE_SPEED, -DRIVE_SPEED).ok();
                     let curr_encoder = b.sensors.left_wheel_encoder;
                     distance_traveled += fabs(measure_distance(
                         curr_encoder,

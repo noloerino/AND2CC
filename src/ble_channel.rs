@@ -63,7 +63,7 @@ impl RomiAttrServer {
                     value
                 );
                 if *handle == Handle::from_raw(LED_CHAR_VALUE_HANDLE) {
-                    rprintln!("updating state");
+                    rprintln!("[ble] Matched char handle, updating state");
                     let value_slice = value.as_ref();
                     unsafe {
                         TEST_STATE[..cmp::min(TEST_STATE.len(), value_slice.len())]

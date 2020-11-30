@@ -80,14 +80,14 @@ pub fn pixy(b: &mut Board) -> ! {
 pub fn drive_forward(b: &mut Board) -> ! {
     loop {
         delay_ms(1);
-        b.actuator().drive_direct(100, 100).ok();
+        b.drive_direct(100, 100).ok();
     }
 }
 
 pub fn drive_reverse(b: &mut Board) -> ! {
     loop {
         delay_ms(1);
-        b.actuator().drive_direct(-100, -100).ok();
+        b.drive_direct(-100, -100).ok();
     }
 }
 
@@ -154,27 +154,27 @@ pub fn target_block(b: &mut Board) -> ! {
                             // Proceed to drive
                             rprintln!("we drive");
                             state = TargetState::Drive;
-                            b.actuator().drive_direct(0, 0).ok();
+                            b.drive_direct(0, 0).ok();
                             delay_ms(100);
                         } else {
                             // Make some adjustments
                             if block.x > x_mid {
                                 // go left
-                                b.actuator().drive_direct(-60, 60).ok();
+                                b.drive_direct(-60, 60).ok();
                             } else {
                                 // go right
-                                b.actuator().drive_direct(60, -60).ok();
+                                b.drive_direct(60, -60).ok();
                             }
                         }
                     } else {
                         // Just keep spinning
                         b.display.row_0().write_str("").ok();
-                        b.actuator().drive_direct(60, -60).ok();
+                        b.drive_direct(60, -60).ok();
                     }
                 } else {
                     // Just keep spinning
                     b.display.row_0().write_str("").ok();
-                    b.actuator().drive_direct(60, -60).ok();
+                    b.drive_direct(60, -60).ok();
                 }
             }
             TargetState::Drive => {
@@ -184,12 +184,12 @@ pub fn target_block(b: &mut Board) -> ! {
                     rprintln!("done");
                     state = TargetState::Done;
                 } else {
-                    b.actuator().drive_direct(-60, -60).unwrap();
+                    b.drive_direct(-60, -60).unwrap();
                 }
             }
             TargetState::Done => {
                 b.display.row_0().write_str("").ok();
-                b.actuator().drive_direct(0, 0).ok();
+                b.drive_direct(0, 0).ok();
                 b.leds.1.set_low().ok();
                 if b.is_docked() {
                     b.leds.0.set_low().ok();
