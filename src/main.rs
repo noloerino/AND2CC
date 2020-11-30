@@ -15,13 +15,13 @@ use embedded_hal::prelude::_embedded_hal_blocking_delay_DelayMs;
 use nrf52832_hal as hal;
 use rtic::app;
 use rtt_target::{rprintln, rtt_init_print};
-use rubble::l2cap::{BleChannelMap, L2CAPState};
+use rubble::config::Config;
+use rubble::l2cap::L2CAPState;
 use rubble::link::queue::{PacketQueue, SimpleQueue};
 use rubble::link::{
     ad_structure::AdStructure, AddressKind, DeviceAddress, LinkLayer, Responder, MIN_PDU_BUF,
 };
 use rubble::time::{Duration, Timer};
-use rubble::{config::Config, security::NoSecurity};
 use rubble_nrf5x::radio::{BleRadio, PacketBuffer};
 use rubble_nrf5x::timer::BleTimer;
 
@@ -85,7 +85,7 @@ pub enum BleConfig {}
 impl Config for BleConfig {
     type Timer = BleTimer<hal::pac::TIMER0>;
     type Transmitter = BleRadio;
-    type ChannelMapper = BleChannelMap<ble_service::RomiServiceAttrs, NoSecurity>;
+    type ChannelMapper = ble_channel::RomiChannelMap;
     type PacketQueue = &'static mut SimpleQueue;
 }
 
@@ -156,13 +156,7 @@ const APP: () = {
         let (rx_prod, rx) = cx.resources.rx_queue.split();
         // Create the actual BLE stack objects
         let mut ble_ll = LinkLayer::<BleConfig>::new(device_address, ble_timer);
-        let ble_r = Responder::new(
-            tx,
-            rx,
-            L2CAPState::new(BleChannelMap::with_attributes(
-                ble_service::RomiServiceAttrs::new(),
-            )),
-        );
+        let ble_r = Responder::new(tx, rx, L2CAPState::new(ble_channel::RomiChannelMap::new()));
         // Send advertisement and set up regular interrupt
         let next_update = ble_ll
             .start_advertise(

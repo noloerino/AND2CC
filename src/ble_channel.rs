@@ -1,9 +1,11 @@
 //! Some extra wrapper stuff to make writeable attributes possible within Rubble.
 
-use crate::ble_service::RomiServiceAttrs;
+use crate::ble_service::{RomiServiceAttrs, LED_CHAR_VALUE_HANDLE, TEST_STATE};
+use core::cmp;
+use rtt_target::rprintln;
 use rubble::att::{
     pdus::{AttError, AttPdu, Opcode},
-    AttributeServer,
+    AttributeServer, Handle,
 };
 use rubble::bytes::{ByteReader, FromBytes};
 use rubble::l2cap::{
@@ -13,7 +15,6 @@ use rubble::security::NoSecurity;
 use rubble::Error;
 
 struct RomiAttrServer {
-    attrs: RomiServiceAttrs,
     wrapped: BleChannelMap<RomiServiceAttrs, NoSecurity>,
 }
 
@@ -52,12 +53,25 @@ impl RomiAttrServer {
         msg: &AttPdu<'_>,
         responder: &mut Sender<'_>,
     ) -> Result<(), AttError> {
+        rprintln!("[ble] Processing request: {:#?}", msg);
         match msg {
-            AttPdu::WriteReq {
-                handle: _,
-                value: _,
-            } => {
+            AttPdu::WriteReq { handle, value } => {
                 // TODO do state change and stuff
+                rprintln!(
+                    "[ble] Received WriteReq w/ handle {:#?} value {:#?}",
+                    handle,
+                    value
+                );
+                if *handle == Handle::from_raw(LED_CHAR_VALUE_HANDLE) {
+                    rprintln!("updating state");
+                    let value_slice = value.as_ref();
+                    unsafe {
+                        TEST_STATE[..cmp::min(TEST_STATE.len(), value_slice.len())]
+                            .clone_from_slice(
+                                &value_slice[..cmp::min(TEST_STATE.len(), value_slice.len())],
+                            )
+                    }
+                }
                 responder
                     .send_with(|writer| -> Result<(), Error> {
                         writer.write_u8(Opcode::WriteRsp.into())?;
@@ -66,10 +80,12 @@ impl RomiAttrServer {
                     .unwrap();
                 Ok(())
             }
-            AttPdu::WriteCommand {
-                handle: _,
-                value: _,
-            } => {
+            AttPdu::WriteCommand { handle, value } => {
+                rprintln!(
+                    "[ble] Received WriteCommand w/ handle {:#?} value {:#?}",
+                    handle,
+                    value
+                );
                 // TODO change state and stuff
                 // No response is needed for WriteCommand
                 Ok(())
@@ -79,15 +95,20 @@ impl RomiAttrServer {
     }
 }
 
-struct RomiChannelMap {
+pub struct RomiChannelMap {
     actual_server: RomiAttrServer,
+}
+
+impl Default for RomiChannelMap {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RomiChannelMap {
     pub fn new() -> Self {
         Self {
             actual_server: RomiAttrServer {
-                attrs: RomiServiceAttrs::new(),
                 wrapped: BleChannelMap::with_attributes(RomiServiceAttrs::new()),
             },
         }
@@ -103,16 +124,9 @@ impl ChannelMapper for RomiChannelMap {
         } else {
             self.actual_server.wrapped.lookup(channel)
         }
-        // match channel {
-        //     Channel::ATT => Some(ChannelData::new_dyn(channel, &mut self.att)),
-        //     Channel::LE_SIGNALING => Some(ChannelData::new_dyn(channel, &mut self.signaling)),
-        //     Channel::LE_SECURITY_MANAGER => Some(ChannelData::new_dyn(channel, &mut self.sm)),
-        //     _ => None,
-        // }
     }
 
     fn att(&mut self) -> ChannelData<'_, AttributeServer<Self::AttributeProvider>> {
-        // ChannelData::new(Channel::ATT, &mut self.actual_server)
         self.actual_server.wrapped.att()
     }
 }

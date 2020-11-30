@@ -53,6 +53,13 @@ const LED_CHAR_DECL_VALUE: [u8; 19] = [
     0x32,
 ];
 
+type RomiBleState = [u8; 2];
+
+// This array represents underlying data shared by all instances of RomiServiceAttrs
+// TODO turn this into RTIC state and pass a reference to the service thing so we can lock
+pub static mut TEST_STATE: RomiBleState = [0x12, 0x34];
+pub const LED_CHAR_VALUE_HANDLE: u16 = 0x3;
+
 // https://www.oreilly.com/library/view/getting-started-with/9781491900550/ch04.html
 // The above link is extremely helpful in determining the structure of BLE stuff
 // Permission flags are in the order they appear in table 4-6
@@ -75,13 +82,19 @@ impl RomiServiceAttrs {
                 // Characteristic value
                 Attribute::new(
                     Uuid128::from_bytes(LED_STATE_CHAR_UUID128).into(),
-                    Handle::from_raw(0x3),
-                    // 1234 for a distinctive test value
-                    &[0x34, 0x12],
+                    Handle::from_raw(LED_CHAR_VALUE_HANDLE),
+                    unsafe { &TEST_STATE },
                 ),
                 // Client Characteristic Configuration Descriptor (CCCD)
                 Attribute::new(Uuid16(0x2902).into(), Handle::from_raw(0x4), &[0x0, 0x0]),
             ],
+        }
+    }
+
+    // Updates the static data; doesn't take in self because it's static
+    pub fn update_data(new_data: &RomiBleState) {
+        unsafe {
+            TEST_STATE = *new_data;
         }
     }
 }
