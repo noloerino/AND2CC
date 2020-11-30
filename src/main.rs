@@ -8,10 +8,10 @@ mod error;
 mod examples;
 mod kobuki;
 mod pixy2;
+mod utils;
 
 use core::default;
 use core::fmt::Write;
-use embedded_hal::prelude::_embedded_hal_blocking_delay_DelayMs;
 use nrf52832_hal as hal;
 use rtic::app;
 use rtt_target::{rprintln, rtt_init_print};
@@ -249,7 +249,7 @@ fn main_loop(b: &mut buckler::board::Board) -> ! {
     use TopState::*;
     let mut top_state = TopState::default();
     loop {
-        b.delay.delay_ms(1u8);
+        utils::delay_ms(1);
         b.poll_sensors().unwrap();
         // Can't just print debug string due to internal state
         b.display

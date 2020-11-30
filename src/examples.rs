@@ -5,15 +5,15 @@
 
 use crate::buckler::board::Board;
 use crate::pixy2;
+use crate::utils::delay_ms;
 use core::fmt::Write;
 use embedded_hal::digital::v2::{InputPin, OutputPin};
-use embedded_hal::prelude::_embedded_hal_blocking_delay_DelayMs;
 use rtt_target::rprintln;
 
 /// Lights all three LEDs if BUTTON0 is pressed.
 pub fn blink(b: &mut Board) -> ! {
     loop {
-        b.delay.delay_ms(1u8);
+        delay_ms(1);
         // Button is high when not pressed
         // LEDs are active low
         if b.button_0.is_high().unwrap() {
@@ -31,7 +31,7 @@ pub fn blink(b: &mut Board) -> ! {
 /// Writes to both display rows.
 pub fn display(b: &mut Board) -> ! {
     loop {
-        b.delay.delay_ms(1u8);
+        delay_ms(1);
         b.display.row_0().write_str("this is row 0").ok();
         b.display.row_1().write_str("this is row 1").ok();
     }
@@ -56,7 +56,7 @@ pub fn pixy(b: &mut Board) -> ! {
         b.pixy.frame_width
     );
     loop {
-        b.delay.delay_ms(1u8);
+        delay_ms(1);
         if b.pixy.get_blocks(false, pixy2::SigMap::ALL, 10).is_err() {
             continue;
         }
@@ -79,14 +79,14 @@ pub fn pixy(b: &mut Board) -> ! {
 
 pub fn drive_forward(b: &mut Board) -> ! {
     loop {
-        b.delay.delay_ms(1u8);
+        delay_ms(1);
         b.actuator().drive_direct(100, 100).ok();
     }
 }
 
 pub fn drive_reverse(b: &mut Board) -> ! {
     loop {
-        b.delay.delay_ms(1u8);
+        delay_ms(1);
         b.actuator().drive_direct(-100, -100).ok();
     }
 }
@@ -95,7 +95,7 @@ pub fn drive_reverse(b: &mut Board) -> ! {
 /// Also prints to rtt continually to check how reliable the continuity is
 pub fn dock_continuity(b: &mut Board) -> ! {
     loop {
-        b.delay.delay_ms(1u8);
+        delay_ms(1);
         if b.is_docked() {
             rprintln!("docked");
             b.leds.0.set_low().ok();
@@ -126,7 +126,7 @@ pub fn target_block(b: &mut Board) -> ! {
     let x_mid = b.pixy.frame_width >> 1;
     loop {
         // 1ms causes driving to screw up
-        b.delay.delay_ms(10u8);
+        delay_ms(10);
         b.display
             .row_1()
             .write_fmt(format_args!("{:?}", state))
@@ -155,7 +155,7 @@ pub fn target_block(b: &mut Board) -> ! {
                             rprintln!("we drive");
                             state = TargetState::Drive;
                             b.actuator().drive_direct(0, 0).ok();
-                            b.delay.delay_ms(100u8);
+                            delay_ms(100);
                         } else {
                             // Make some adjustments
                             if block.x > x_mid {

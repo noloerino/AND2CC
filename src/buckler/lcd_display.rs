@@ -6,10 +6,9 @@
 //! https://www.newhavendisplay.com/specs/NHD-0216KZW-AY5.pdf
 //! https://github.com/lab11/buckler/tree/master/software/libraries/nhd_display
 
+use crate::utils::delay_ms;
 use arrayvec::ArrayString;
 use core::fmt::Write;
-use embedded_hal::prelude::_embedded_hal_blocking_delay_DelayMs;
-use nrf52832_hal::delay;
 use nrf52832_hal::gpio::{Output, Pin, PushPull};
 use nrf52832_hal::spim;
 use nrf52832_hal::Spim;
@@ -90,10 +89,9 @@ impl<T: spim::Instance> Write for Row<'_, T> {
 
 impl<T: spim::Instance> LcdDisplay<T> {
     /// Initializees the display. Corresponds to display_init
-    pub fn new<'b>(
+    pub fn new(
         mut spi: Spim<T>,
         mut chip_select: Pin<Output<PushPull>>,
-        delay: &'b mut delay::Delay,
     ) -> Result<Self, spim::Error> {
         // We cannot pass the array directly to the function because DMA requires
         // the buffer to be in data RAM
@@ -101,31 +99,31 @@ impl<T: spim::Instance> LcdDisplay<T> {
         // Set function 8-bit mode
         buf = [0b1110, 0];
         spi.write(&mut chip_select, &buf)?;
-        delay.delay_ms(10u8);
+        delay_ms(10);
         // Turn display off
         buf = [0b10, 0];
         spi.write(&mut chip_select, &buf)?;
-        delay.delay_ms(10u8);
+        delay_ms(10);
         // Clear display
         buf = [0, 0b0100_0000];
         spi.write(&mut chip_select, &buf)?;
-        delay.delay_ms(10u8);
+        delay_ms(10);
         // Set entry mode to increment right no shift
         buf = [1, 0b1000_0000];
         spi.write(&mut chip_select, &buf)?;
-        delay.delay_ms(10u8);
+        delay_ms(10);
         // Move cursor home
         buf = [0, 0b1000_0000];
         spi.write(&mut chip_select, &buf)?;
-        delay.delay_ms(10u8);
+        delay_ms(10);
         // Turn on display
         buf = [0b11, 0b0100_0000];
         spi.write(&mut chip_select, &buf)?;
-        delay.delay_ms(10u8);
+        delay_ms(10);
         // Read the status bit
         buf = [0b0100_0000, 0];
         spi.write(&mut chip_select, &buf)?;
-        delay.delay_ms(10u8);
+        delay_ms(10);
         Ok(LcdDisplay { spi, chip_select })
     }
 

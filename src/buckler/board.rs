@@ -7,7 +7,7 @@ use crate::pixy2::*;
 use core::fmt::Write;
 use embedded_hal::digital::v2::{InputPin, OutputPin};
 use nrf52832_hal::gpio::{Floating, Input, Level, Output, Pin, PullDown, PullUp, PushPull};
-use nrf52832_hal::{delay, gpio, pac, spim, twim, uarte};
+use nrf52832_hal::{gpio, pac, spim, twim, uarte};
 use rtt_target::rprintln;
 
 pub type Leds = (
@@ -74,7 +74,6 @@ impl Pins {
 /// Provides access to Buckler sensors, actuators, and pins not used elsewhere.
 pub struct Board {
     uart: uarte::Uarte<pac::UARTE0>,
-    pub delay: delay::Delay,
     pub display: LcdDisplay<pac::SPIM1>,
     pub imu: Imu<pac::TWIM0, pac::TIMER1>,
     pub sensors: Sensors,
@@ -100,9 +99,8 @@ pub struct BoardInitResources {
 }
 
 impl Board {
-    pub fn new(p: BoardInitResources, c: pac::CorePeripherals) -> Board {
+    pub fn new(p: BoardInitResources, _c: pac::CorePeripherals) -> Board {
         let pins = Pins::new(p.P0);
-        let mut delay = delay::Delay::new(c.SYST);
         let mut uart = uarte::Uarte::new(
             p.UARTE0,
             uarte::Pins {
@@ -120,7 +118,7 @@ impl Board {
             spim::Spim::new(p.SPIM2, pins.pixy_spi, spim::Frequency::M2, spim::MODE_3, 0);
 
         // Initialize display
-        let mut display = LcdDisplay::new(spi1, pins.lcd_chip_sel, &mut delay).unwrap();
+        let mut display = LcdDisplay::new(spi1, pins.lcd_chip_sel).unwrap();
         display.row_0().write_str("Initializing...").unwrap();
         display.row_1().write_str("Blocking on base").unwrap();
         // Initialize IMU
@@ -137,7 +135,6 @@ impl Board {
         rprintln!("[Init] Connected to pixy...");
         let mut b = Board {
             uart,
-            delay,
             display,
             imu,
             sensors,
