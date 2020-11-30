@@ -166,7 +166,7 @@ dependencies = [
  "cortex-m-rtic",
  "embedded-hal",
  "lsm9ds1",
- "nrf52832-hal 0.11.0",
+ "nrf52832-hal",
  "rtt-target",
  "rubble",
  "rubble-nrf5x",
@@ -310,23 +310,6 @@ checksum = "546c37ac5d9e56f55e73b677106873d9d9f5190605e41a856503623648488cae"
 
 [[package]]
 name = "nrf-hal-common"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "299e8e5b67542ae134c93722f03f3137d349b3786a35dd2b02a87701ea779201"
-dependencies = [
- "cast",
- "cfg-if 0.1.10",
- "cortex-m",
- "embedded-hal",
- "fixed",
- "nb 1.0.0",
- "nrf52832-pac",
- "rand_core",
- "void",
-]
-
-[[package]]
-name = "nrf-hal-common"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "675eee40228591a1991eade1d4adc1a23fd7ff750b5c895ca068b9c2f0878b72"
@@ -345,23 +328,12 @@ dependencies = [
 
 [[package]]
 name = "nrf52832-hal"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fd1764acdf1f9da9803b00867586de13a2c23ab2b1231a3cf1ae4fc2cfbb403"
-dependencies = [
- "embedded-hal",
- "nrf-hal-common 0.11.1",
- "nrf52832-pac",
-]
-
-[[package]]
-name = "nrf52832-hal"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48bd1e014b982611704895bd7486b7f56529149d8448b64e596fb008d9cc2cee"
 dependencies = [
  "embedded-hal",
- "nrf-hal-common 0.12.0",
+ "nrf-hal-common",
  "nrf52832-pac",
 ]
 
@@ -467,7 +439,7 @@ name = "rubble-nrf5x"
 version = "0.0.3"
 source = "git+https://github.com/jonas-schievink/rubble#6bc46da68176776ef36f31da5879f7a422cdd6c5"
 dependencies = [
- "nrf52832-hal 0.12.0",
+ "nrf52832-hal",
  "rubble",
 ]
 

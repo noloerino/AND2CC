@@ -10,7 +10,7 @@ edition = "2018"
 cortex-m = "0.6.4"
 cortex-m-rt = "0.6.13"
 rtt-target = { version = "0.2.0", features = ["cortex-m"] }
-nrf52832-hal = { version = "0.11.0", features = ["rt"] }
+nrf52832-hal = { version = "0.12.0", features = ["rt"] }
 lsm9ds1 = "0.1.0"
 arrayvec = { version = "0.5.2", default-features = false, features = [] }
 cortex-m-rtic = "0.5.5"

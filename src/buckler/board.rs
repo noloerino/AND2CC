@@ -88,6 +88,7 @@ pub struct Board {
     dock_detect: Pin<Input<PullDown>>,
 }
 
+#[allow(non_snake_case)]
 pub struct BoardInitResources {
     pub P0: pac::P0,
     pub UARTE0: pac::UARTE0,
