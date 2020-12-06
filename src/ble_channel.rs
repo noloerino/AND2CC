@@ -1,7 +1,6 @@
 //! Some extra wrapper stuff to make writeable attributes possible within Rubble.
 
-use crate::ble_service::{RomiServiceAttrs, LED_CHAR_VALUE_HANDLE, TEST_STATE};
-use core::cmp;
+use crate::ble_service::{RomiServiceAttrs, BLE_STATE, LED_CHAR_VALUE_HANDLE};
 use rtt_target::rprintln;
 use rubble::att::{
     pdus::{AttError, AttPdu, Opcode},
@@ -65,12 +64,8 @@ impl RomiAttrServer {
                 if *handle == Handle::from_raw(LED_CHAR_VALUE_HANDLE) {
                     rprintln!("[ble] Matched char handle, updating state");
                     let value_slice = value.as_ref();
-                    unsafe {
-                        TEST_STATE[..cmp::min(TEST_STATE.len(), value_slice.len())]
-                            .clone_from_slice(
-                                &value_slice[..cmp::min(TEST_STATE.len(), value_slice.len())],
-                            )
-                    }
+                    assert!(value_slice.len() == 3);
+                    unsafe { BLE_STATE.copy_from_slice(value_slice) }
                 }
                 responder
                     .send_with(|writer| -> Result<(), Error> {

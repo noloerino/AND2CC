@@ -160,7 +160,7 @@ const APP: () = {
         // Send advertisement and set up regular interrupt
         let next_update = ble_ll
             .start_advertise(
-                Duration::from_millis(1000),
+                Duration::from_millis(200),
                 &[AdStructure::CompleteLocalName("EE149 | DDD")],
                 &mut radio,
                 tx_cons,
@@ -235,13 +235,14 @@ const APP: () = {
         let b = c.resources.b;
         // main_loop(b);
         // Comment out main_loop and uncomment these to run sanity examples
-        examples::blink(b);
+        // examples::blink(b);
         // examples::display(b);
         // examples::pixy(b);
         // examples::drive_forward(b);
         // examples::drive_reverse(b);
         // examples::dock_continuity(b);
         // examples::target_block(b);
+        examples::remote(b);
     }
 };
 

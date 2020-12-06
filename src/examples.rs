@@ -200,3 +200,40 @@ pub fn target_block(b: &mut Board) -> ! {
         }
     }
 }
+
+// Used to track state for remote below
+#[derive(Debug)]
+enum RemoteState {
+    Off,
+    Receive,
+}
+
+pub fn remote(b: &mut Board) -> ! {
+    use crate::ble_service::{RomiBleState, BLE_STATE};
+    let mut state = RemoteState::Off;
+    loop {
+        delay_ms(10);
+        let is_button_pressed = b.sensors.is_button_pressed();
+        match state {
+            RemoteState::Off => {
+                if is_button_pressed {
+                    state = RemoteState::Receive;
+                }
+            }
+            RemoteState::Receive => {
+                if is_button_pressed {
+                    state = RemoteState::Off;
+                } else {
+                    let ble_state = RomiBleState::from_arr(unsafe { BLE_STATE });
+                    if ble_state.led_status {
+                        b.leds.2.set_low().ok();
+                    } else {
+                        b.leds.2.set_high().ok();
+                    }
+                    b.drive_direct(ble_state.l_drive.into(), ble_state.r_drive.into())
+                        .ok();
+                }
+            }
+        }
+    }
+}

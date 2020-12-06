@@ -53,11 +53,32 @@ const LED_CHAR_DECL_VALUE: [u8; 19] = [
     0x32,
 ];
 
-type RomiBleState = [u8; 2];
+#[derive(Copy, Clone)]
+pub struct RomiBleState {
+    pub led_status: bool,
+    pub l_drive: u8,
+    pub r_drive: u8,
+}
+
+type BleStateArray = [u8; 3];
+
+impl RomiBleState {
+    fn as_arr(self) -> BleStateArray {
+        [self.led_status as u8, self.l_drive, self.r_drive]
+    }
+
+    pub fn from_arr(arr: BleStateArray) -> Self {
+        Self {
+            led_status: arr[0] > 0,
+            l_drive: arr[1],
+            r_drive: arr[2],
+        }
+    }
+}
 
 // This array represents underlying data shared by all instances of RomiServiceAttrs
 // TODO turn this into RTIC state and pass a reference to the service thing so we can lock
-pub static mut TEST_STATE: RomiBleState = [0x12, 0x34];
+pub static mut BLE_STATE: BleStateArray = [0, 0, 0];
 pub const LED_CHAR_VALUE_HANDLE: u16 = 0x3;
 
 // https://www.oreilly.com/library/view/getting-started-with/9781491900550/ch04.html
@@ -83,7 +104,7 @@ impl RomiServiceAttrs {
                 Attribute::new(
                     Uuid128::from_bytes(LED_STATE_CHAR_UUID128).into(),
                     Handle::from_raw(LED_CHAR_VALUE_HANDLE),
-                    unsafe { &TEST_STATE },
+                    unsafe { &BLE_STATE },
                 ),
                 // Client Characteristic Configuration Descriptor (CCCD)
                 Attribute::new(Uuid16(0x2902).into(), Handle::from_raw(0x4), &[0x0, 0x0]),
@@ -94,7 +115,7 @@ impl RomiServiceAttrs {
     // Updates the static data; doesn't take in self because it's static
     pub fn update_data(new_data: &RomiBleState) {
         unsafe {
-            TEST_STATE = *new_data;
+            BLE_STATE = new_data.as_arr();
         }
     }
 }
