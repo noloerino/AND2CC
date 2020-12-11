@@ -1,63 +1,82 @@
-// Copied from https://github.com/lab11/buckler/blob/master/software/apps/ble_svc_template/main.c
-// For testing purposes
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <math.h>
+
+#include "app_error.h"
 #include "nrf.h"
-#include "app_util.h"
-#include "nrf_twi_mngr.h"
+#include "nrf_delay.h"
 #include "nrf_gpio.h"
-#include "display.h"
+#include "nrf_log.h"
+#include "nrf_log_ctrl.h"
+#include "nrf_log_default_backends.h"
+#include "nrf_pwr_mgmt.h"
+#include "nrf_serial.h"
+#include "nrfx_gpiote.h"
+#include "nrf_drv_spi.h"
 
-#include "simple_ble.h"
 #include "buckler.h"
+#include "display.h"
+#include "pixy2.h"
 
-#include "max44009.h"
+#include "kobukiActuator.h"
+#include "kobukiSensorPoll.h"
+#include "kobukiSensorTypes.h"
+#include "kobukiUtilities.h"
 
-// Intervals for advertising and connections
-static simple_ble_config_t ble_config = {
-        // c0:98:e5:49:xx:xx
-        .platform_id       = 0x49,    // used as 4th octect in device BLE address
-        .device_id         = 0x0000, // TODO: replace with your lab bench number
-        .adv_name          = "EE149 LED", // used in advertisements if there is room
-        .adv_interval      = MSEC_TO_UNITS(1000, UNIT_0_625_MS),
-        .min_conn_interval = MSEC_TO_UNITS(500, UNIT_1_25_MS),
-        .max_conn_interval = MSEC_TO_UNITS(1000, UNIT_1_25_MS),
-};
-
-// 32e61089-2b22-4db5-a914-43ce41986c70
-static simple_ble_service_t led_service = {{
-    .uuid128 = {0x70,0x6C,0x98,0x41,0xCE,0x43,0x14,0xA9,
-                0xB5,0x4D,0x22,0x2B,0x89,0x10,0xE6,0x32}
-}};
-
-static simple_ble_char_t led_state_char = {.uuid16 = 0x108a};
-static bool led_state = true;
-
-/*******************************************************************************
- *   State for this application
- ******************************************************************************/
-// Main application state
-simple_ble_app_t* simple_ble_app;
-
-void ble_evt_write(ble_evt_t const* p_ble_evt) {
-    if (simple_ble_is_char_event(p_ble_evt, &led_state_char)) {
-      printf("Got write to LED characteristic!\n");
-      if (led_state) {
-        printf("Turning on LED!\n");
-        nrf_gpio_pin_clear(BUCKLER_LED0);
-      } else {
-        printf("Turning off LED!\n");
-        nrf_gpio_pin_set(BUCKLER_LED0);
-      }
-    }
+void check_status(int8_t code, const char *label, bool print_on_success) {
+  if (code != PIXY_RESULT_OK)
+    printf("%s failed with %d\n", label, code);
+  else if (print_on_success)
+    printf("%s succeeded\n", label);
 }
 
+pixy_block_t *select_block(pixy_block_t *blocks, int8_t num_blocks) {
+  if (num_blocks <= 0)
+    return NULL;
+  // pick oldest one
+  uint8_t max_age = 0;
+  pixy_block_t *block = NULL;
+  for (int8_t i = 0; i < num_blocks; ++i) {
+    if (blocks[i].m_age >= max_age) {
+      max_age = blocks[i].m_age;
+      block = &blocks[i];
+    }
+  }
+  return block;
+}
+
+pixy_block_t *get_block(pixy_block_t *blocks, int8_t num_blocks, uint8_t index) {
+  for (int8_t i = 0; i < num_blocks; ++i) {
+    printf("block index: %d\n", blocks[i].m_index);
+    if (blocks[i].m_index == index) {
+      return &blocks[i];
+    }
+  }
+  return NULL;
+}
+
+float clip(float f, float low, float high) {
+  if (f < low)
+    f = low;
+  if (f > high)
+    f = high;
+  return f;
+}
+
+pixy_t *pixy;
+
 int main(void) {
+  ret_code_t error_code = NRF_SUCCESS;
 
-  // Initialize
+  // initialize RTT library
+  error_code = NRF_LOG_INIT(NULL);
+  APP_ERROR_CHECK(error_code);
+  NRF_LOG_DEFAULT_BACKENDS_INIT();
+  printf("Log initialized\n");
 
-  // initialize display
+  // initialize spi master
   nrf_drv_spi_t spi_instance = NRF_DRV_SPI_INSTANCE(1);
   nrf_drv_spi_config_t spi_config = {
     .sck_pin = BUCKLER_LCD_SCLK,
@@ -71,29 +90,87 @@ int main(void) {
     .bit_order = NRF_DRV_SPI_BIT_ORDER_MSB_FIRST
   };
 
-  ret_code_t error_code = nrf_drv_spi_init(&spi_instance, &spi_config, NULL, NULL);
+  error_code = nrf_drv_spi_init(&spi_instance, &spi_config, NULL, NULL);
   APP_ERROR_CHECK(error_code);
-  display_init(&spi_instance);
-  display_write("Hello, Human!", DISPLAY_LINE_0);
-  printf("Display initialized!\n");
+  nrf_delay_ms(10);
 
-  // Setup LED GPIO
-  nrf_gpio_cfg_output(BUCKLER_LED0);
+  nrf_drv_spi_t pixy_spi = NRF_DRV_SPI_INSTANCE(2);
+  nrf_drv_spi_config_t pixy_spi_config = {
+    .sck_pin = BUCKLER_SD_SCLK,
+    .mosi_pin = BUCKLER_SD_MOSI,
+    .miso_pin = BUCKLER_SD_MISO,
+    .ss_pin = BUCKLER_SD_CS,
+    .irq_priority = NRFX_SPI_DEFAULT_CONFIG_IRQ_PRIORITY,
+    .orc = 0,
+    .frequency = NRF_DRV_SPI_FREQ_4M,
+    .mode = NRF_DRV_SPI_MODE_3,
+    .bit_order = NRF_DRV_SPI_BIT_ORDER_MSB_FIRST
+  };
 
-  // Setup BLE
-  simple_ble_app = simple_ble_init(&ble_config);
+  error_code = nrf_drv_spi_init(&pixy_spi, &pixy_spi_config, NULL, NULL);
+  APP_ERROR_CHECK(error_code);
+  nrf_delay_ms(10);
 
-  simple_ble_add_service(&led_service);
+  // initialize display driver
+   display_init(&spi_instance);
+   printf("Display initialized\n");
+   nrf_delay_ms(10);
+   display_write("disp init", 0);
 
-  simple_ble_add_characteristic(1, 1, 0, 0,
-      sizeof(led_state), (uint8_t*)&led_state,
-      &led_service, &led_state_char);
+  check_status(pixy_init(&pixy, &pixy_spi), "initialize", true);
+  pixy_print_version(pixy->version);
 
-  // Start Advertising
-  simple_ble_adv_only_name();
+  check_status(pixy_set_led(pixy, 0, 255, 0), "set led", true);
 
-  while(1) {
-    power_manage();
+  check_status(pixy_get_resolution(pixy), "get resolution", true);
+  printf("resolution: %d x %d\n", pixy->frame_width, pixy->frame_height);
+  
+  check_status(pixy_set_lamp(pixy, 255, 255), "set lamp", true);
+
+  kobukiInit();
+  printf("Kobuki initialized\n");
+
+  KobukiSensors_t sensors = {0};
+
+  const float speed_target = 100;
+  float speed_left = 0;
+  float speed_right = 0;
+  const float base_width = 140;
+  const float k_p = 2.0;
+  const float decay =  0.95;
+
+  float angle = 0;
+  float new_factor = 0.5;
+  
+  while(true) {
+    kobukiSensorPoll(&sensors);
+    kobukiDriveDirect((int16_t)speed_left, (int16_t)speed_right);
+
+    int8_t ec = pixy_get_blocks(pixy, false, CCC_SIG_ALL, CCC_MAX_BLOCKS);
+    if (ec < 0) {
+      //printf("get blocks error: %d\n", ec);
+    } else {
+      //printf("got %d blocks\n", ec);
+    }
+    if (pixy->num_blocks > 0) {
+      pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks);
+      if (block->m_x <= pixy->frame_width && block->m_y <= pixy->frame_height) {
+        const float new_angle = ((M_PI / 3.0) / pixy->frame_width) * block->m_x - (M_PI / 6.0);
+        angle = (1-new_factor) * angle + new_factor * new_angle;
+        float delta = (base_width / 2.0) * k_p * angle;
+        speed_left = -speed_target + delta;
+        speed_right = -speed_target - delta; 
+      }
+    }
+
+    speed_left *= decay;
+    speed_right *= decay;
+
+    int16_t v_left = (int16_t)clip(speed_left, INT16_MIN, INT16_MAX);
+    int16_t v_right = (int16_t)clip(speed_right, INT16_MIN, INT16_MAX);
+    printf("angle: %f    speed: %d    %d\n", angle * 180.0 / M_PI, v_left, v_right);
+
+    nrf_delay_ms(10);
   }
 }
 
