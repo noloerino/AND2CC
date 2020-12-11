@@ -5,8 +5,9 @@
 // TODO distinguish between internal state (like busy variable) and writeable state
 typedef struct ddd_ble_state {
   uint8_t led_state;
-  uint8_t l_drive;
-  uint8_t r_drive;
+  uint8_t : 3;
+  float speed_left;
+  float speed_right;
 } ddd_ble_state_t;
 
 #ifdef SECONDARY

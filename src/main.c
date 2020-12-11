@@ -149,6 +149,8 @@ int main(void) {
 
   // Initialize BLE
   ddd_ble_init();
+  ddd_ble_state_t *ble_state = get_ble_state();
+
   printf("Initialized BLE (robot #%d)\n", DDD_ROBOT_ID);
 
   kobukiInit();
@@ -158,6 +160,7 @@ int main(void) {
   KobukiSensors_t sensors = {0};
   float speed_left = 0;
   float speed_right = 0;
+
   float angle = 0;
   uint32_t target_fail_count = 0;
 
@@ -238,7 +241,6 @@ int main(void) {
         printf("error: default state\n");
       }
     }
-
     nrf_delay_ms(10);
   }
 }

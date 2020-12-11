@@ -38,7 +38,6 @@ ddd_ble_state_t *get_ble_state() {
   return &ble_state;
 }
 
-
 void ble_evt_write(ble_evt_t const *p_ble_evt) {
   if (simple_ble_is_char_event(p_ble_evt, &led_state_char)) {
     if (ble_state.led_state) {
@@ -57,5 +56,5 @@ void ddd_ble_init() {
   simple_ble_add_characteristic(1, 1, 0, 0,
     sizeof(ble_state), (uint8_t*) &ble_state,
     &led_service, &led_state_char);
-  simple_ble_adv_name_only();
+  simple_ble_adv_only_name();
 }

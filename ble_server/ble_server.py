@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 
-# import struct
-# from bluepy.btle import Peripheral, DefaultDelegate
+import struct
 import asyncio
 from bleak import BleakClient, BleakScanner
-# import argparse
 
 # parser = argparse.ArgumentParser(description='Print advertisement data from a BLE device')
 # parser.add_argument('addr', metavar='A', type=str, help='Address of the form XX:XX:XX:XX:XX:XX')
@@ -16,8 +14,21 @@ from bleak import BleakClient, BleakScanner
 DDD_SERVICE_UUID = "32e61089-2b22-4db5-a914-43ce41986c70"
 DDD_CHAR_UUID    = "32e6108a-2b22-4db5-a914-43ce41986c70"
 
+led_status = False
+l_drive = 0.0
+r_drive = 0.0
+
+# < means little endian
+# B means unsigned byte
+# f means float
+# some of these are just padding fields
+STATE_LAYOUT = "<Bbbbff"
+
+SPEED = -100.0
+
 # https://bleak.readthedocs.io/en/latest/usage.html
 async def run():
+    global led_status, l_drive, r_drive
     addr = None
     print("searching for buckler...")
     devices = await BleakScanner.discover()
@@ -47,9 +58,37 @@ async def run():
 
         while True:
             char_value = await buckler.read_gatt_char(ch)
-            print(f"read value: {char_value}")
-            display = input("Type a little-endian hex number to send as a byte array> ")
-            await buckler.write_gatt_char(ch, int(display, 16).to_bytes(3, byteorder="little"))
+            # TODO use this feedback to set state vars
+            print(f"read value: {struct.unpack(STATE_LAYOUT, char_value)}")
+            cmd = input("ddd> ").strip()
+            if cmd == "on":
+                led_status = True
+            elif cmd =="off":
+                led_status = False
+            elif cmd == "l":
+                l_drive = SPEED
+                r_drive = -SPEED
+            elif cmd == "r":
+                l_drive = -SPEED
+                r_drive = SPEED
+            elif cmd == "f":
+                l_drive = SPEED
+                r_drive = SPEED
+            elif cmd == "b":
+                l_drive = -SPEED
+                r_drive = -SPEED
+            elif cmd == "z":
+                l_drive = 0
+                r_drive = 0
+            elif cmd == "quit":
+                print("quitting")
+                break
+            else:
+                print(f"invalid command: {cmd}")
+                continue
+            await buckler.write_gatt_char(ch, struct.pack(
+                STATE_LAYOUT, led_status, 0, 0, 0, l_drive, r_drive
+            ))
     finally:
         await buckler.disconnect()
 
