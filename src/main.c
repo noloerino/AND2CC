@@ -19,6 +19,7 @@
 #include "buckler.h"
 #include "display.h"
 #include "pixy2.h"
+#include "ddd_ble.h"
 
 #include "kobukiActuator.h"
 #include "kobukiSensorPoll.h"
@@ -146,6 +147,10 @@ int main(void) {
   
   pixy_error_check(pixy_set_lamp(pixy, 100, 100), "set lamp", true);
 
+  // Initialize BLE
+  ddd_ble_init();
+  printf("Initialized BLE (robot #%d)\n", DDD_ROBOT_ID);
+
   kobukiInit();
   printf("Kobuki initialized\n");
 
@@ -155,10 +160,21 @@ int main(void) {
   float speed_right = 0;
   float angle = 0;
   uint32_t target_fail_count = 0;
-  
+
+  // Initialize all 3 LEDs
+  // LED 0 (25) will be used for reaching of initial docking state
+  // LED 1 (24) will display continuity
+  // LED 2 (23) will be a BLE test thing
+  nrf_gpio_cfg_output(BUCKLER_LED0);
+  nrf_gpio_cfg_output(BUCKLER_LED1);
+  nrf_gpio_cfg_output(BUCKLER_LED2);
+  // Need to set them high to turn them off
+  nrf_gpio_pin_set(BUCKLER_LED0);
+  nrf_gpio_pin_set(BUCKLER_LED1);
+  nrf_gpio_pin_set(BUCKLER_LED2);
+
   while(true) {
     kobukiSensorPoll(&sensors);
-
     // Set speeds based on speed_left and speed_right.
     int16_t v_left = 0;
     int16_t v_right = 0;
