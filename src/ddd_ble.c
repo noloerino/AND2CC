@@ -6,12 +6,16 @@
 
 #include "ddd_ble.h"
 
+// https://stackoverflow.com/questions/5459868/concatenate-int-to-string-using-c-preprocessor
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)
+
 // Intervals for advertising and connections
 static simple_ble_config_t ble_config = {
   // c0:98:e5:49:xx:xx
   .platform_id       = 0x49,    // used as 4th octect in device BLE address
   .device_id         = DDD_ROBOT_ID,
-  .adv_name          = "EE149 | DDD", // used in advertisements if there is room
+  .adv_name          = "EE149 | DDD " STR(DDD_ROBOT_ID), // used in advertisements if there is room
   .adv_interval      = MSEC_TO_UNITS(1000, UNIT_0_625_MS),
   .min_conn_interval = MSEC_TO_UNITS(500, UNIT_1_25_MS),
   .max_conn_interval = MSEC_TO_UNITS(1000, UNIT_1_25_MS),
@@ -34,6 +38,7 @@ ddd_ble_state_t *get_ble_state() {
   return &ble_state;
 }
 
+
 void ble_evt_write(ble_evt_t const *p_ble_evt) {
   if (simple_ble_is_char_event(p_ble_evt, &led_state_char)) {
     if (ble_state.led_state) {
@@ -52,5 +57,5 @@ void ddd_ble_init() {
   simple_ble_add_characteristic(1, 1, 0, 0,
     sizeof(ble_state), (uint8_t*) &ble_state,
     &led_service, &led_state_char);
-  simple_ble_adv_only_name();
+  simple_ble_adv_name_only();
 }

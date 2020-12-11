@@ -17,3 +17,10 @@ include ./buckler/software/boards/buckler_revC/Board.mk
 
 # Include main Makefile
 include $(NRF_BASE_DIR)/make/AppMakefile.mk
+
+# Start ble server
+.PHONY: ble_server
+ble_server:
+	python3 ble_server/ble_server.py
+
+
