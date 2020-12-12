@@ -76,12 +76,11 @@ async def run():
         print("Both DDDs ready!")
 
         while True:
-            char_values = await asyncio.gather(
-                buckler_0.read_gatt_char(chs[0]),
-                buckler_1.read_gatt_char(chs[1]),
-            )
-            # TODO use this feedback to set state vars
-            print(f"read value: {[struct.unpack(STATE_LAYOUT, v) for v in char_values]}")
+            # char_values = await asyncio.gather(
+            #     buckler_0.read_gatt_char(chs[0]),
+            #     buckler_1.read_gatt_char(chs[1]),
+            # )
+            # print(f"read value: {[struct.unpack(STATE_LAYOUT, v) for v in char_values]}")
             cmd = input("ddd> ").strip()
             if cmd == "quit":
                 print("quitting")
