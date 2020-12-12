@@ -3,7 +3,7 @@
 
 README instructions tbd once we figure out the toolchain. Two things to note if cloning from scratch:
 
-1. To enable SPI2, go into the buckler module and add the following 3 lines to
+1. To enable SPI2, go into the buckler module and add the following lines to
 `software/boards/buckler_revC/app_config.h`:
 ```
 #define NRFX_SPIM2_ENABLED 1

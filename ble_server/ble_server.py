@@ -14,17 +14,19 @@ from bleak import BleakClient, BleakScanner
 DDD_SERVICE_UUID = "32e61089-2b22-4db5-a914-43ce41986c70"
 DDD_CHAR_UUID    = "32e6108a-2b22-4db5-a914-43ce41986c70"
 
-led_status = False
-l_drive = 0.0
-r_drive = 0.0
-
 # < means little endian
 # B means unsigned byte
-# f means float
-# some of these are just padding fields
-STATE_LAYOUT = "<Bbbbff"
+STATE_LAYOUT = "<B"
 
-SPEED = -100.0
+CMD_LUT = {
+    "on": 0,
+    "off": 1,
+    "l": 2,
+    "r": 3,
+    "f": 4,
+    "b": 5,
+    "z": 6,
+}
 
 # https://bleak.readthedocs.io/en/latest/usage.html
 async def run():
@@ -61,34 +63,15 @@ async def run():
             # TODO use this feedback to set state vars
             print(f"read value: {struct.unpack(STATE_LAYOUT, char_value)}")
             cmd = input("ddd> ").strip()
-            if cmd == "on":
-                led_status = True
-            elif cmd =="off":
-                led_status = False
-            elif cmd == "l":
-                l_drive = SPEED
-                r_drive = -SPEED
-            elif cmd == "r":
-                l_drive = -SPEED
-                r_drive = SPEED
-            elif cmd == "f":
-                l_drive = SPEED
-                r_drive = SPEED
-            elif cmd == "b":
-                l_drive = -SPEED
-                r_drive = -SPEED
-            elif cmd == "z":
-                l_drive = 0
-                r_drive = 0
-            elif cmd == "quit":
+            if cmd == "quit":
                 print("quitting")
                 break
+            if cmd in CMD_LUT:
+                await buckler.write_gatt_char(ch, struct.pack(
+                    STATE_LAYOUT, CMD_LUT[cmd]
+                ))
             else:
                 print(f"invalid command: {cmd}")
-                continue
-            await buckler.write_gatt_char(ch, struct.pack(
-                STATE_LAYOUT, led_status, 0, 0, 0, l_drive, r_drive
-            ))
     finally:
         await buckler.disconnect()
 

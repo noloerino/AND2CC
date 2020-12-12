@@ -6,6 +6,7 @@
 
 #include "app_error.h"
 #include "nrf.h"
+#include "nrf_atfifo.h"
 #include "nrf_delay.h"
 #include "nrf_gpio.h"
 #include "nrf_log.h"
@@ -134,7 +135,7 @@ int main(void) {
   display_init(&spi_instance);
   printf("Display initialized\n");
   nrf_delay_ms(10);
-  display_write("disp init", 0);
+  display_write("Display init", 0);
 
   pixy_t *pixy;
   pixy_error_check(pixy_init(&pixy, &pixy_spi), "initialize", true);
@@ -149,7 +150,8 @@ int main(void) {
 
   // Initialize BLE
   ddd_ble_init();
-  ddd_ble_state_t *ble_state = get_ble_state();
+  nrf_atfifo_t *ble_cmd_q = get_ble_cmd_q();
+  display_write("Hello, I'm " DDD_ROBOT_ID_STR, 0);
 
   printf("Initialized BLE (robot #%d)\n", DDD_ROBOT_ID);
 
@@ -178,6 +180,26 @@ int main(void) {
 
   while(true) {
     kobukiSensorPoll(&sensors);
+
+    // Before all else, check the command queue for a message
+    ddd_ble_cmd_t cmd = { 0 };
+    if (nrf_atfifo_get_free(ble_cmd_q, &cmd, sizeof(ddd_ble_cmd_t), NULL) != NRF_ERROR_NOT_FOUND) {
+      switch (cmd) {
+        case DDD_BLE_LED_ON:
+          printf("Turning on LED\n");
+          nrf_gpio_pin_clear(BUCKLER_LED2);
+          break;
+        case DDD_BLE_LED_OFF:
+          printf("Turning off LED\n");
+          nrf_gpio_pin_set(BUCKLER_LED2);
+          break;
+        default:
+          printf("Unhandled command\n");
+          break;
+      }
+      continue;
+    }
+
     // Set speeds based on speed_left and speed_right.
     int16_t v_left = 0;
     int16_t v_right = 0;
@@ -241,6 +263,7 @@ int main(void) {
         printf("error: default state\n");
       }
     }
+    
     nrf_delay_ms(10);
   }
 }

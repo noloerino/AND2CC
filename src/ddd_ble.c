@@ -1,14 +1,12 @@
 #include <stdint.h>
+#include "app_error.h"
 #include "nrf_gpio.h"
+#include "nrf_atfifo.h"
 
 #include "simple_ble.h"
 #include "buckler.h"
 
 #include "ddd_ble.h"
-
-// https://stackoverflow.com/questions/5459868/concatenate-int-to-string-using-c-preprocessor
-#define STR_HELPER(x) #x
-#define STR(x) STR_HELPER(x)
 
 // Intervals for advertising and connections
 static simple_ble_config_t ble_config = {
@@ -34,19 +32,22 @@ static ddd_ble_state_t ble_state = { 0 };
 
 simple_ble_app_t *simple_ble_app;
 
+NRF_ATFIFO_DEF(ble_cmd_q, ddd_ble_cmd_t, 1);
+
+nrf_atfifo_t *get_ble_cmd_q() {
+  return ble_cmd_q;
+}
+
 ddd_ble_state_t *get_ble_state() {
   return &ble_state;
 }
 
 void ble_evt_write(ble_evt_t const *p_ble_evt) {
   if (simple_ble_is_char_event(p_ble_evt, &led_state_char)) {
-    if (ble_state.led_state) {
-      printf("Turning on LED\n");
-      nrf_gpio_pin_clear(BUCKLER_LED2);
-    } else {
-      printf("Turning off LED!\n");
-      nrf_gpio_pin_set(BUCKLER_LED2);
-    }
+    ddd_ble_cmd_t cmd = (ddd_ble_cmd_t) ble_state.cmd_id;
+    APP_ERROR_CHECK(
+      nrf_atfifo_alloc_put(ble_cmd_q, &cmd, sizeof(ddd_ble_cmd_t), NULL)
+    );
   }
 }
 
@@ -56,5 +57,9 @@ void ddd_ble_init() {
   simple_ble_add_characteristic(1, 1, 0, 0,
     sizeof(ble_state), (uint8_t*) &ble_state,
     &led_service, &led_state_char);
+  APP_ERROR_CHECK(
+    NRF_ATFIFO_INIT(ble_cmd_q)
+  );
   simple_ble_adv_only_name();
+  printf("Initialized DDD BLE");
 }

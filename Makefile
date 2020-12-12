@@ -15,6 +15,9 @@ NRF_BASE_DIR ?= ./buckler/software/nrf52x-base/
 # Include board Makefile (if any)
 include ./buckler/software/boards/buckler_revC/Board.mk
 
+# Needed after inclusion of board makefile...
+BOARD_SOURCES += nrf_atfifo.c
+
 # Include main Makefile
 include $(NRF_BASE_DIR)/make/AppMakefile.mk
 
