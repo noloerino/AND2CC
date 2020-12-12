@@ -182,19 +182,41 @@ int main(void) {
     kobukiSensorPoll(&sensors);
 
     // Before all else, check the command queue for a message
+    // TODO for the time being, the arrival of a BLE command will override whatever's happening
+    // in the rest of the main loop
+    // Eventually, these will need to be integrated together
     ddd_ble_cmd_t cmd = { 0 };
     if (nrf_atfifo_get_free(ble_cmd_q, &cmd, sizeof(ddd_ble_cmd_t), NULL) != NRF_ERROR_NOT_FOUND) {
       switch (cmd) {
         case DDD_BLE_LED_ON:
-          printf("Turning on LED\n");
+          display_write("[ble] LED ON", 1);
           nrf_gpio_pin_clear(BUCKLER_LED2);
           break;
         case DDD_BLE_LED_OFF:
-          printf("Turning off LED\n");
+          display_write("[ble] LED OFF", 1);
           nrf_gpio_pin_set(BUCKLER_LED2);
+          break;
+        case DDD_BLE_DRV_FORWARD: {
+          display_write("[ble] FORWARD", 1);
+          // 100 causes jerk and the robot will reset itself
+          const int16_t TEST_DRV_SPD = 50;
+          if (DDD_ROBOT_ID == 0) {
+            speed_left = TEST_DRV_SPD;
+            speed_right = TEST_DRV_SPD;
+          } else {
+            speed_left = -TEST_DRV_SPD;
+            speed_right = -TEST_DRV_SPD;
+          }
+          break;
+        }
+        case DDD_BLE_DRV_ZERO:
+          display_write("[ble] ZERO", 1);
+          speed_left = 0.0;
+          speed_right = 0.0;
           break;
         default:
           printf("Unhandled command\n");
+          display_write("[ble] INVALID", 1);
           break;
       }
       continue;
@@ -263,7 +285,6 @@ int main(void) {
         printf("error: default state\n");
       }
     }
-    
     nrf_delay_ms(10);
   }
 }

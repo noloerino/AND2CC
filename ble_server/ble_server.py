@@ -42,37 +42,32 @@ async def get_buckler_ch(buckler):
 async def run():
     global led_status, l_drive, r_drive
     print("searching for DDDs...")
-    devices = await BleakScanner.discover()
     buckler_0 = None
     buckler_1 = None
     task_0 = None
     task_1 = None
-    for d in devices:
-        # print(f"device {d} at address {d.address}")
-        if "EE149" in d.name:
-            print(f"discovered device {d}")
-            if "(0)" in d.name:
-                buckler_0 = BleakClient(d.address)
-                print(f"connecting to DDD 0 @ addr {d.address}")
-                task_0 = get_buckler_ch(buckler_0)
-                if buckler_1 is not None:
-                    break
-            elif "(1)" in d.name:
-                buckler_1 = BleakClient(d.address)
-                print(f"connecting to DDD 1 @ addr {d.address}")
-                task_1 = get_buckler_ch(buckler_1)
-                if buckler_0 is not None:
-                    break
-            else:
-                print("for some reason, could not connect to EE149 robot")
-                print("please double check the device local name")
-    if buckler_0 is None or buckler_1 is None:
-        print("couldn't find at least one DDD robot")
-        return
+    while buckler_0 is None or buckler_1 is None:
+        devices = await BleakScanner.discover()
+        for d in devices:
+            # print(f"device {d} at address {d.address}")
+            if "EE149" in d.name:
+                print(f"discovered device {d}")
+                if buckler_0 is None and "(0)" in d.name:
+                    buckler_0 = BleakClient(d.address)
+                    print(f"discovered DDD 0 @ addr {d.address}")
+                    if buckler_1 is not None:
+                        break
+                if buckler_1 is None and "(1)" in d.name:
+                    buckler_1 = BleakClient(d.address)
+                    print(f"discovered DDD 1 @ addr {d.address}")
+                    if buckler_0 is not None:
+                        break
+        if buckler_0 is None or buckler_1 is None:
+            print("retrying discovery...")
 
     try:
         print("DDDs found, verifying characteristics...")
-        chs = await asyncio.gather(task_0, task_1)
+        chs = await asyncio.gather(get_buckler_ch(buckler_0), get_buckler_ch(buckler_1))
         print("Both DDDs ready!")
 
         while True:
