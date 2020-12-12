@@ -10,4 +10,6 @@ README instructions tbd once we figure out the toolchain. Two things to note if 
 #define NRFX_SPI2_ENABLED 1
 #define SPI2_ENABLED 1
 ```
-2. To compile code for the secondary robot, run `make CFLAGS=-DSECONDARY flash`
+2. To compile code for the secondary robot, run `make CFLAGS=-DSECONDARY flash`. It may be necessary
+to `make clean` or just touch one of the source files first because the compiler's not smart enough
+to realize the files changed I guess.
