@@ -38,8 +38,9 @@
 typedef enum {
   OFF,
   SPIN,
-  TARGET
-} top_state_t;
+  TARGET,
+  DOCKED,
+} robot_state_t;
 
 void pixy_error_check(int8_t code, const char *label, bool print_on_success) {
   if (code != PIXY_RESULT_OK)
@@ -152,7 +153,7 @@ int main(void) {
   kobukiInit();
   printf("Kobuki initialized\n");
 
-  top_state_t top_state = OFF;
+  robot_state_t state = OFF;
   KobukiSensors_t sensors = {0};
   float speed_left = 0;
   float speed_right = 0;
@@ -188,14 +189,31 @@ int main(void) {
     v_right = (int16_t)clip(speed_right, INT16_MIN, INT16_MAX);
     kobukiDriveDirect(v_left, v_right);
 
-    switch (top_state) {
+    // Input configured to pull up, so pin reads zero when docked
+    bool docked = !nrf_gpio_pin_read(DOCK_DETECT);
+    if (docked) {
+      nrf_gpio_pin_clear(BUCKLER_LED0);
+    } else {
+      nrf_gpio_pin_set(BUCKLER_LED0);
+    }
+
+    bool button_pressed = is_button_pressed(&sensors);
+    // Button press forces return to OFF state
+    if (state != OFF && button_pressed) {
+      printf("Button pressed; returning to OFF");
+      state = OFF;
+      // Turn docking LED back off
+      nrf_gpio_pin_set(BUCKLER_LED1);
+    }
+
+    switch (state) {
       case OFF: {
         display_write("OFF", 0);
         speed_left = 0;
         speed_right = 0;
         
-        if (is_button_pressed(&sensors)) {
-          top_state = SPIN;
+        if (button_pressed) {
+          state = SPIN;
           printf("OFF -> SPIN\n");
         }
         break;
@@ -212,7 +230,7 @@ int main(void) {
         }
         pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks, pixy->frame_width, pixy->frame_height);
         if (block != NULL) {
-          top_state = TARGET;
+          state = TARGET;
           target_fail_count = 0;
           printf("SPIN -> TARGET\n");
         }
@@ -222,7 +240,12 @@ int main(void) {
         display_write("TARGET", 0);
         pixy_get_blocks(pixy, false, CCC_SIG1 | CCC_SIG2, CCC_MAX_BLOCKS);
         pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks, pixy->frame_width, pixy->frame_height);
-        if (block != NULL) {
+        if (docked) {
+          // Turn on LED1 to indicate that we've at least docked once now
+          nrf_gpio_pin_clear(BUCKLER_LED1);
+          state = DOCKED;
+          printf("TARGET -> DOCKED\n");
+        } else if (block != NULL) {
           const float new_angle = ((M_PI / 3.0) / pixy->frame_width) * block->m_x - (M_PI / 6.0);
           angle = ANGLE_DECAY * angle + (1 - ANGLE_DECAY) * new_angle;
           const float delta = (CHASSIS_BASE_WIDTH / 2.0) * ANGLE_K_P * angle;
@@ -232,13 +255,18 @@ int main(void) {
         } else {
           ++target_fail_count;
           if (target_fail_count > TARGET_FAIL_COUNT_THRESHOLD) {
-            top_state = SPIN;
+            state = SPIN;
             printf("TARGET -> SPIN\n");
           }
         }
         break;
       }
+      case DOCKED: {
+        display_write("DOCKED", 0);
+        // Await BLE command
+      }
       default: {
+        display_write("INVALID STATE", 0);
         printf("error: default state\n");
       }
     }
