@@ -32,7 +32,8 @@ static ddd_ble_state_t ble_state = { 0 };
 
 simple_ble_app_t *simple_ble_app;
 
-NRF_ATFIFO_DEF(ble_cmd_q, ddd_ble_cmd_t, 1);
+// Don't need to buffer all that many commands since the server will block
+NRF_ATFIFO_DEF(ble_cmd_q, ddd_ble_cmd_t, 2);
 
 nrf_atfifo_t *get_ble_cmd_q() {
   return ble_cmd_q;
@@ -49,6 +50,15 @@ void ble_evt_write(ble_evt_t const *p_ble_evt) {
       nrf_atfifo_alloc_put(ble_cmd_q, &cmd, sizeof(ddd_ble_cmd_t), NULL)
     );
   }
+}
+
+void ble_evt_disconnected(ble_evt_t const*p_ble_evt) {
+  // Strictly speaking a disconnect should be prioritized over others so we should pop if
+  // the queue is full, but whatever  
+  ddd_ble_cmd_t cmd = DDD_BLE_DISCONNECT;
+  APP_ERROR_CHECK(
+    nrf_atfifo_alloc_put(ble_cmd_q, &cmd, sizeof(ddd_ble_cmd_t), NULL)
+  );
 }
 
 void ddd_ble_init() {

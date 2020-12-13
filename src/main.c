@@ -145,12 +145,12 @@ int main(void) {
   pixy_error_check(pixy_init(&pixy, &pixy_spi), "initialize", true);
   pixy_print_version(pixy->version);
 
-  pixy_error_check(pixy_set_led(pixy, 0, 255, 0), "set led", true);
+  // pixy_error_check(pixy_set_led(pixy, 0, 255, 0), "set led", true);
 
-  pixy_error_check(pixy_get_resolution(pixy), "get resolution", true);
-  printf("resolution: %d x %d\n", pixy->frame_width, pixy->frame_height);
+  // pixy_error_check(pixy_get_resolution(pixy), "get resolution", true);
+  // printf("resolution: %d x %d\n", pixy->frame_width, pixy->frame_height);
   
-  pixy_error_check(pixy_set_lamp(pixy, 100, 100), "set lamp", true);
+  // pixy_error_check(pixy_set_lamp(pixy, 100, 100), "set lamp", true);
 
   kobukiInit();
   printf("Kobuki initialized\n");
@@ -178,6 +178,12 @@ int main(void) {
   nrf_gpio_cfg_output(DOCK_POWER);
   nrf_gpio_pin_clear(DOCK_POWER);
   nrf_gpio_cfg_input(DOCK_DETECT, NRF_GPIO_PIN_PULLUP);
+
+  {
+    // TODO get rid of this
+    state = DOCKED;
+    ddd_ble_init();
+  }
   
   while(true) {
     kobukiSensorPoll(&sensors);
@@ -206,12 +212,7 @@ int main(void) {
         speed_right = 0;
         
         if (is_button_pressed(&sensors)) {
-          {
-            // TODO get rid of this
-            state = DOCKED;
-            ddd_ble_init();
-          }
-          // state = SPIN;
+          state = SPIN;
           printf("OFF -> SPIN\n");
         }
         break;
@@ -270,7 +271,8 @@ int main(void) {
         // in the rest of the main loop
         // Eventually, these will need to be integrated together
         ddd_ble_cmd_t cmd = { 0 };
-        const int16_t TEST_DRV_SPD = 70;
+        const int16_t DRV_SPD = 70;
+        const int16_t TURN_SPD = 125;
         if (nrf_atfifo_get_free(ble_cmd_q, &cmd, sizeof(ddd_ble_cmd_t), NULL) != NRF_ERROR_NOT_FOUND) {
           switch (cmd) {
             case DDD_BLE_LED_ON: {
@@ -285,35 +287,35 @@ int main(void) {
             }
             case DDD_BLE_DRV_LEFT: {
               display_write("[ble] LEFT", 1);
-              speed_left = -TEST_DRV_SPD;
-              speed_right = TEST_DRV_SPD;
+              speed_left = -TURN_SPD;
+              speed_right = TURN_SPD;
               break;
             }
             case DDD_BLE_DRV_RIGHT: {
               display_write("[ble] RIGHT", 1);
-              speed_left = TEST_DRV_SPD;
-              speed_right = -TEST_DRV_SPD;
+              speed_left = TURN_SPD;
+              speed_right = -TURN_SPD;
               break;
             }
             case DDD_BLE_DRV_FORWARD: {
               display_write("[ble] FORWARD", 1);
               if (DDD_ROBOT_ID == 0) {
-                speed_left = TEST_DRV_SPD;
-                speed_right = TEST_DRV_SPD;
+                speed_left = DRV_SPD;
+                speed_right = DRV_SPD;
               } else {
-                speed_left = -TEST_DRV_SPD;
-                speed_right = -TEST_DRV_SPD;
+                speed_left = -DRV_SPD;
+                speed_right = -DRV_SPD;
               }
               break;
             }
             case DDD_BLE_DRV_BACKWARD: {
               display_write("[ble] BACKWARD", 1);
               if (DDD_ROBOT_ID == 0) {
-                speed_left = -TEST_DRV_SPD;
-                speed_right = -TEST_DRV_SPD;
+                speed_left = -DRV_SPD;
+                speed_right = -DRV_SPD;
               } else {
-                speed_left = TEST_DRV_SPD;
-                speed_right = TEST_DRV_SPD;
+                speed_left = DRV_SPD;
+                speed_right = DRV_SPD;
               }
               break; 
             }

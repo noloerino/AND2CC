@@ -32,6 +32,7 @@ typedef enum ddd_ble_cmd {
     DDD_BLE_DRV_FORWARD,
     DDD_BLE_DRV_BACKWARD,
     DDD_BLE_DRV_ZERO,
+    DDD_BLE_DISCONNECT,
 } ddd_ble_cmd_t;
 
 // Returns the queue used to store BLE commands.

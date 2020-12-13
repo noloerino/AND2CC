@@ -77,7 +77,7 @@ async def run():
             # )
             # print(f"read value: {[struct.unpack(STATE_LAYOUT, v) for v in char_values]}")
             cmd = input("ddd> ").strip()
-            if cmd == "quit":
+            if cmd == "q":
                 print("quitting")
                 break
             if cmd in CMD_LUT:
