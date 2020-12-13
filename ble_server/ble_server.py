@@ -7,10 +7,12 @@ import time
 from bleak import BleakClient, BleakScanner
 
 prepare_delay_ms = 4000
+use_sync = True # Enables synchronization protocol
 
-DDD_SERVICE_UUID   = "32e61089-2b22-4db5-a914-43ce41986c70"
-DDD_REQ_CHAR_UUID  = "32e6108b-2b22-4db5-a914-43ce41986c70"
-DDD_RESP_CHAR_UUID = "32e6108c-2b22-4db5-a914-43ce41986c70"
+DDD_SERVICE_UUID     = "32e61089-2b22-4db5-a914-43ce41986c70"
+DDD_REQ_CHAR_UUID    = "32e6108b-2b22-4db5-a914-43ce41986c70"
+DDD_RESP_CHAR_UUID   = "32e6108c-2b22-4db5-a914-43ce41986c70"
+DDD_NOSYNC_CHAR_UUID = "32e6108d-2b22-4db5-a914-43ce41986c70"
 
 CONN_TIMEOUT = 20.0 # seconds
 
@@ -47,11 +49,20 @@ def now_ms():
     return int(time.time() * 1000) - start_ms
 
 class Channels:
-    def __init__(self, i, buckler, pair):
+    def __init__(self, i, buckler, chs):
         self.id = i
         self.buckler = buckler
-        self.req_ch = pair[0] 
-        self.resp_ch = pair[1]
+        self.req_ch = chs[0] 
+        self.resp_ch = chs[1]
+        self.nosync_ch = chs[2]
+        self.recorded_rtts = []
+
+    async def do_nosync(self, cmd_id):
+        return await self.buckler.write_gatt_char(
+            self.nosync_ch,
+            struct.pack("B", cmd_id),
+            response=False
+        )
 
     async def prepare(self, seq_no, t1, cmd_id):
         """
@@ -88,6 +99,7 @@ class Channels:
         # Peripheral assumes t2 = t3 (we don't need that kind of granularity)
         rtt = t4 - t1
         err = t2_e - t1 + rtt // 2
+        self.recorded_rtts.append(rtt)
         print(f"# {i} estimated RTT: {rtt}; e: {err}")
         if resp_seq_no != seq_no:
             print(f"# {i} unexpected sequence number: got {resp_seq_no}, exp {seq_no}")
@@ -145,11 +157,12 @@ async def get_buckler_ch(buckler):
     return (
         sv.get_characteristic(DDD_REQ_CHAR_UUID).handle,
         sv.get_characteristic(DDD_RESP_CHAR_UUID).handle,
+        sv.get_characteristic(DDD_NOSYNC_CHAR_UUID).handle,
     )
 
 # https://bleak.readthedocs.io/en/latest/usage.html
 async def run():
-    global prepare_delay_ms
+    global prepare_delay_ms, use_sync
     print("searching for DDDs...")
     buckler_0 = None
     buckler_1 = None
@@ -174,12 +187,12 @@ async def run():
 
     try:
         print("DDDs found, verifying characteristics...")
-        channel_pairs = await asyncio.gather(
+        channel_tuples = await asyncio.gather(
             get_buckler_ch(buckler_0),
             get_buckler_ch(buckler_1)
         )
-        ch_0 = Channels(0, buckler_0, channel_pairs[0])
-        ch_1 = Channels(1, buckler_1, channel_pairs[1])
+        ch_0 = Channels(0, buckler_0, channel_tuples[0])
+        ch_1 = Channels(1, buckler_1, channel_tuples[1])
         print("Both DDDs ready!")
 
         seq_no = random.randint(0, 256)
@@ -192,29 +205,43 @@ async def run():
                 if cmd in ("q", "quit", "exit"):
                     print("quitting")
                     break
+                elif cmd == "nosync":
+                    print("disabled sync")
+                    use_sync = False
+                elif cmd == "sync":
+                    print(f"enabled sync (delay {prepare_delay_ms} ms)")
+                    use_sync = True
                 elif len(toks) > 0 and toks[0] == "setdelay":
                     prepare_delay_ms = int(toks[1])
+                    print(f"set sync delay to {prepare_delay_ms} ms")
                 elif cmd in CMD_LUT:
-                    print(f"# Beginning 2PC sequence {seq_no}")
                     cmd_id = CMD_LUT[cmd]
-                    t1 = now_ms()
-                    err0, err1 = await asyncio.gather(
-                        ch_0.prepare(seq_no, t1, cmd_id),
-                        ch_1.prepare(seq_no, t1, cmd_id)
-                    )
-                    if not err0 or not err1:
-                        print("# Aborting 2PC")
-                        await asyncio.gather(
-                            ch_0.abort(seq_no),
-                            ch_1.abort(seq_no)
+                    if use_sync:
+                        print(f"# Beginning 2PC sequence {seq_no}")
+                        t1 = now_ms()
+                        err0, err1 = await asyncio.gather(
+                            ch_0.prepare(seq_no, t1, cmd_id),
+                            ch_1.prepare(seq_no, t1, cmd_id)
                         )
-                        continue
-                    c0, c1 = await asyncio.gather(
-                        ch_0.commit(seq_no, err0),
-                        ch_1.commit(seq_no, err1)
-                    )
-                    if not c0 or not c1:
-                        print("# Missed a 2PC ACK (nothing left to do)")
+                        if not err0 or not err1:
+                            print("# Aborting 2PC")
+                            await asyncio.gather(
+                                ch_0.abort(seq_no),
+                                ch_1.abort(seq_no)
+                            )
+                            continue
+                        c0, c1 = await asyncio.gather(
+                            ch_0.commit(seq_no, err0),
+                            ch_1.commit(seq_no, err1)
+                        )
+                        if not c0 or not c1:
+                            print("# Missed a 2PC ACK (nothing left to do)")
+                    else:
+                        print("# Transmitting commands with no sync")
+                        await asyncio.gather(
+                            ch_0.do_nosync(cmd_id),
+                            ch_1.do_nosync(cmd_id)
+                        )
                 else:
                     print(f"invalid command: {cmd}")
             except KeyboardInterrupt:
@@ -223,6 +250,8 @@ async def run():
                 pass
     finally:
         await asyncio.gather(buckler_0.disconnect(), buckler_1.disconnect())
+        print(f"DDD 0 RTTs: {ch_0.recorded_rtts}")
+        print(f"DDD 1 RTTs: {ch_1.recorded_rtts}")
 
 loop = asyncio.get_event_loop()
 loop.run_until_complete(run())

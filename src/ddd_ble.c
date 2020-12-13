@@ -29,11 +29,13 @@ static simple_ble_service_t led_service = {{
 // LED was 108a
 static simple_ble_char_t req_state_char = {.uuid16 = 0x108B};
 static simple_ble_char_t resp_state_char = {.uuid16 = 0x108C};
+static simple_ble_char_t nosync_state_char = {.uuid16 = 0x108D};
 
 static ddd_ble_req_t ble_req = { 0 };
 // Strictly speaking, this isn't a response - rather, it's a read-only characteristic
 // set after req is updated
 static ddd_ble_resp_t ble_resp = { 0 };
+static uint8_t ble_nosync_cmd_id = 0;
 
 simple_ble_app_t *simple_ble_app;
 
@@ -102,6 +104,14 @@ void ble_evt_write(ble_evt_t const *p_ble_evt) {
         break;
       }
     }
+  } else if (simple_ble_is_char_event(p_ble_evt, &nosync_state_char)) {
+    printf("[nosync] Directly queuing command %hhu\n", ble_nosync_cmd_id);
+    ddd_ble_timed_cmd_t timed_cmd;
+    timed_cmd.cmd = (ddd_ble_cmd_t) ble_nosync_cmd_id;
+    timed_cmd.target_ms = 0;
+    APP_ERROR_CHECK(
+      nrf_atfifo_alloc_put(ble_cmd_q, &timed_cmd, sizeof(timed_cmd), NULL)
+    );
   }
 }
 
@@ -133,11 +143,14 @@ void ddd_ble_init() {
     simple_ble_app = simple_ble_init(&ble_config);
     simple_ble_add_service(&led_service);
     simple_ble_add_characteristic(1, 1, 0, 0,
-      sizeof(ble_req), (uint8_t*) &ble_req,
+      sizeof(ble_req), (uint8_t *) &ble_req,
       &led_service, &req_state_char);
     simple_ble_add_characteristic(1, 0, 0, 0,
-      sizeof(ble_resp), (uint8_t*) &ble_resp,
+      sizeof(ble_resp), (uint8_t *) &ble_resp,
       &led_service, &resp_state_char);
+    simple_ble_add_characteristic(1, 1, 0, 0,
+      sizeof(uint8_t), (uint8_t *) &ble_nosync_cmd_id,
+      &led_service, &nosync_state_char);
     APP_ERROR_CHECK(
       NRF_ATFIFO_INIT(ble_cmd_q)
     );
