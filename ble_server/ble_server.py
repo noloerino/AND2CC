@@ -155,8 +155,7 @@ async def run():
     print("searching for DDDs...")
     buckler_0 = None
     buckler_1 = None
-    while buckler_0 is None:
-    # while buckler_0 is None or buckler_1 is None:
+    while buckler_0 is None or buckler_1 is None:
         devices = await BleakScanner.discover()
         for d in devices:
             # print(f"device {d} at address {d.address}")
@@ -165,25 +164,24 @@ async def run():
                 if buckler_0 is None and "(0)" in d.name:
                     buckler_0 = BleakClient(d.address)
                     print(f"discovered DDD 0 @ addr {d.address}")
-                    break
-        #             if buckler_1 is not None:
-        #                 break
-        #         if buckler_1 is None and "(1)" in d.name:
-        #             buckler_1 = BleakClient(d.address)
-        #             print(f"discovered DDD 1 @ addr {d.address}")
-        #             if buckler_0 is not None:
-        #                 break
-        # if buckler_0 is None or buckler_1 is None:
-        #     print("retrying discovery...")
+                    if buckler_1 is not None:
+                        break
+                if buckler_1 is None and "(1)" in d.name:
+                    buckler_1 = BleakClient(d.address)
+                    print(f"discovered DDD 1 @ addr {d.address}")
+                    if buckler_0 is not None:
+                        break
+        if buckler_0 is None or buckler_1 is None:
+            print("retrying discovery...")
 
     try:
         print("DDDs found, verifying characteristics...")
         channel_pairs = await asyncio.gather(
             get_buckler_ch(buckler_0),
-            # get_buckler_ch(buckler_1)
+            get_buckler_ch(buckler_1)
         )
         ch_0 = Channels(0, buckler_0, channel_pairs[0])
-        # ch_1 = Channels(1, buckler_1, channel_pairs[1])
+        ch_1 = Channels(1, buckler_1, channel_pairs[1])
         print("Both DDDs ready!")
 
         seq_no = random.randint(0, 256)
@@ -198,18 +196,23 @@ async def run():
                 print(f"# Beginning 2PC sequence {seq_no}")
                 cmd_id = CMD_LUT[cmd]
                 t1 = now_ms()
-                # [p1, p2] = await asyncio.gather(
-                #     ch_0.prepare(t1, cmd_id),
-                #     ch_1.prepare(t1, cmd_id),
-                # )
-                err0 = await ch_0.prepare(seq_no, t1, cmd_id)
-                if not err0:
+                err0, err1 = await asyncio.gather(
+                    ch_0.prepare(seq_no, t1, cmd_id),
+                    ch_1.prepare(seq_no, t1, cmd_id)
+                )
+                if not err0 or not err1:
                     print("# Aborting 2PC")
-                    await ch_0.abort(seq_no)
+                    await asyncio.gather(
+                        ch_0.abort(seq_no),
+                        ch_1.abort(seq_no)
+                    )
                     continue
-                c0 = await ch_0.commit(seq_no, err0)
-                if not c0:
-                    print("# Didn't get 2PC ACK (nothing left to do)")
+                c0, c1 = await asyncio.gather(
+                    ch_0.commit(seq_no, err0),
+                    ch_1.commit(seq_no, err1)
+                )
+                if not c0 or not c1:
+                    print("# Missed a 2PC ACK (nothing left to do)")
             else:
                 print(f"invalid command: {cmd}")
     finally:
