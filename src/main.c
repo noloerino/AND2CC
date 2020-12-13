@@ -329,6 +329,7 @@ int main(void) {
               display_write("[ble] DISCONNECTED", 1);
               speed_left = 0.0;
               speed_right = 0.0;
+              break;
             }
             default:
               printf("Unhandled command\n");
