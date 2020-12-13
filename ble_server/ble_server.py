@@ -6,12 +6,7 @@ import random
 import time
 from bleak import BleakClient, BleakScanner
 
-# parser = argparse.ArgumentParser(description='Print advertisement data from a BLE device')
-# parser.add_argument('addr', metavar='A', type=str, help='Address of the form XX:XX:XX:XX:XX:XX')
-# args = parser.parse_args()
-# addr = args.addr.lower()
-# if len(addr) != 17:
-#     raise ValueError("Invalid address supplied")
+PREPARE_TARGET_DELAY_MS = 3000
 
 DDD_SERVICE_UUID   = "32e61089-2b22-4db5-a914-43ce41986c70"
 DDD_REQ_CHAR_UUID  = "32e6108b-2b22-4db5-a914-43ce41986c70"
@@ -21,8 +16,8 @@ CONN_TIMEOUT = 20.0 # seconds
 
 # < means little endian
 # L means unsigned long (4B), l means signed long, B means unsigned byte
-REQ_PREPARE_LAYOUT = "<LBBB"
-REQ_COMMIT_LAYOUT = "<lBBB"
+REQ_PREPARE_LAYOUT = "<LLBBB"
+REQ_COMMIT_LAYOUT = "<LlBBB"
 RESP_LAYOUT = "<LBBH"
 
 class Sync:
@@ -44,8 +39,6 @@ CMD_LUT = {
     "b": 6,
     "z": 7,
 }
-
-PREPARE_TARGET_DELAY_MS = 2000
 
 start_ms = int(time.time() * 1000)
 
@@ -72,12 +65,14 @@ class Channels:
         await self.buckler.write_gatt_char(
             self.req_ch,
             # Prepare:
+            # - t1: u32
             # - target offset from t1 [ms]: u32
             # - 2PC command: u8
             # - robot command: u8
             # - seq_no: u8
             struct.pack(
                 REQ_PREPARE_LAYOUT,
+                t1,
                 PREPARE_TARGET_DELAY_MS,
                 Sync.PREPARE,
                 cmd_id,
@@ -85,12 +80,13 @@ class Channels:
             ),
             response=True
         )
+        # Since we're using write w/ response, use post-write time as t4
+        t4 = now_ms()
         # PTP/2PC from follower to leader
         t2_e, sync_resp_id, resp_seq_no, _ = struct.unpack(
             RESP_LAYOUT,
             await self.buckler.read_gatt_char(self.resp_ch)
         )
-        t4 = now_ms()
         # Peripheral assumes t2 = t3 (we don't need that kind of granularity)
         rtt = t4 - t1
         err = t2_e - t1 + rtt // 2
@@ -123,11 +119,12 @@ class Channels:
         await self.buckler.write_gatt_char(
             self.req_ch,
             # Commit:
+            # - _: u32
             # - e: i32
             # - 2PC command: u8
             # - _: u8
             # - seq_no: u8
-            struct.pack(REQ_COMMIT_LAYOUT, err, Sync.COMMIT, 0, seq_no),
+            struct.pack(REQ_COMMIT_LAYOUT, 0, err, Sync.COMMIT, 0, seq_no),
             response=True
         )
         return await self.wait_for_ack(seq_no)
@@ -136,7 +133,7 @@ class Channels:
         print(f"# {self.id} sending 2PC abort")
         await self.buckler.write_gatt_char(
             self.req_ch,
-            struct.pack(REQ_PREPARE_LAYOUT, 0, Sync.ABORT, 0),
+            struct.pack(REQ_PREPARE_LAYOUT, 0, 0, Sync.ABORT, 0),
             response=False
         )
         return await self.wait_for_ack(seq_no)

@@ -28,17 +28,22 @@ typedef enum {
   DDD_BLE_DISCONNECT,
 } ddd_ble_cmd_t;
 
+typedef struct {
+  ddd_ble_cmd_t cmd;
+  uint32_t tick;
+} ddd_ble_timed_cmd_t;
+
 // A request issued to the BLE GATT peripheral (this device) from the central (a laptop).
 //
 // Since this gets serialized as (uint8_t *), we need to encourage all fields to be byte-aligned
 // manually. No unions are used to make the type layout easier to reason about on the server side.
 // Enums are replaced by uint types to make width predictable as well.
 typedef struct {
-  // Timestamp fields
+  uint32_t t1; // PTP t1 on a 2PC prepare
   union {
-    uint32_t target; // target delay on a 2PC prepare
+    uint32_t delay; // target delay on a 2PC prepare
     int32_t e; // clock error on a 2PC commit
-  } ts0;
+  } ts;
   // IDs whether this is a 2PC prepare, commit, or abort command.
   uint8_t sync_req_id;
   // IDs a ddd_ble_cmd_t (should be checked only on 2PC prepare).

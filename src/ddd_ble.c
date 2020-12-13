@@ -39,31 +39,46 @@ static ddd_ble_resp_t ble_resp = { 0 };
 simple_ble_app_t *simple_ble_app;
 
 // Don't need to buffer all that many commands since the server will block
-NRF_ATFIFO_DEF(ble_cmd_q, ddd_ble_cmd_t, 2);
+NRF_ATFIFO_DEF(ble_cmd_q, ddd_ble_timed_cmd_t, 4);
 
 nrf_atfifo_t *get_ble_cmd_q() {
   return ble_cmd_q;
 }
 
+uint32_t now_ms() {
+  return (uint32_t) (APP_TIMER_CLOCK_FREQ * 1000 / app_timer_cnt_get());
+}
+
 void ble_evt_write(ble_evt_t const *p_ble_evt) {
   static ddd_ble_cmd_t prepared_cmd = DDD_BLE_INVALID;
+  static uint32_t target_time = 0;
   if (simple_ble_is_char_event(p_ble_evt, &req_state_char)) {
     uint8_t seq_no = ble_req.seq_no;
     switch (ble_req.sync_req_id) {
       case SYNC_2PC_CMD_PREPARE: {
         prepared_cmd = (ddd_ble_cmd_t) ble_req.cmd_id;
         printf("[sync] Received 2PC prepare (cmd=%hhu, seq=%hhu)\n", prepared_cmd, seq_no);
-        ble_resp.t2 = (uint32_t) (APP_TIMER_CLOCK_FREQ * 1000 / app_timer_cnt_get());
+        ble_resp.t2 = now_ms();
         ble_resp.sync_resp_id = (uint8_t) SYNC_2PC_RESP_VOTE_COMMIT;
         ble_resp.seq_no = seq_no;
+        target_time = ble_req.t1 + ble_req.ts.delay;
         break;
       }
       case SYNC_2PC_CMD_COMMIT: {
-        // TODO check PTP time sync; if time too long then just don't do the job
+        // Target time is of the central device, so we add the error
+        uint32_t when = target_time + (int16_t) ble_req.ts.e;
+        uint32_t now = now_ms();
+        ddd_ble_timed_cmd_t timed_cmd;
+        timed_cmd.cmd = prepared_cmd;
+        timed_cmd.tick = APP_TIMER_TICKS(when);
         APP_ERROR_CHECK(
-          nrf_atfifo_alloc_put(ble_cmd_q, &prepared_cmd, sizeof(ddd_ble_cmd_t), NULL)
+          nrf_atfifo_alloc_put(ble_cmd_q, &timed_cmd, sizeof(timed_cmd), NULL)
         );
-        printf("[sync] Acknowledging 2PC commit (seq=%hhu)\n", seq_no);
+        printf(
+          "[sync] Acknowledging 2PC commit (seq=%hhu), should run in %lu ms\n",
+          seq_no,
+          when > now ? when - now : 0
+        );
         // Strictly speaking we should send a fail response if alloc_put fails
         ble_resp.t2 = 0;
         ble_resp.sync_resp_id = (uint8_t) SYNC_2PC_RESP_ACK;

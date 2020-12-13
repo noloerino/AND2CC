@@ -270,13 +270,13 @@ int main(void) {
         display_write("DOCKED", 0);
         nrf_atfifo_t *ble_cmd_q = get_ble_cmd_q();
         // Check the command queue for a message
-        // TODO for the time being, the arrival of a BLE command will override whatever's happening
-        // in the rest of the main loop
-        // Eventually, these will need to be integrated together
-        ddd_ble_cmd_t cmd = { 0 };
         const int16_t DRV_SPD = 70;
         const int16_t TURN_SPD = 125;
-        if (nrf_atfifo_get_free(ble_cmd_q, &cmd, sizeof(ddd_ble_cmd_t), NULL) != NRF_ERROR_NOT_FOUND) {
+        int ctx[0];
+        ddd_ble_timed_cmd_t *timed_cmd = nrf_atfifo_item_get(ble_cmd_q, (void *) &ctx);
+        // Poll until expiration
+        if ((timed_cmd != NULL) && timed_cmd->tick > app_timer_cnt_get()) {
+          ddd_ble_cmd_t cmd = timed_cmd->cmd;
           switch (cmd) {
             case DDD_BLE_LED_ON: {
               display_write("[ble] LED ON", 1);
@@ -341,6 +341,7 @@ int main(void) {
               speed_right = 0.0;
               break;
           }
+          nrf_atfifo_item_free(ble_cmd_q, (void *) &ctx);
         }
         break;
       }
