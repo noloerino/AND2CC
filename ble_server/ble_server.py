@@ -6,7 +6,7 @@ import random
 import time
 from bleak import BleakClient, BleakScanner
 
-PREPARE_TARGET_DELAY_MS = 4000
+prepare_delay_ms = 4000
 
 DDD_SERVICE_UUID   = "32e61089-2b22-4db5-a914-43ce41986c70"
 DDD_REQ_CHAR_UUID  = "32e6108b-2b22-4db5-a914-43ce41986c70"
@@ -73,7 +73,7 @@ class Channels:
             struct.pack(
                 REQ_PREPARE_LAYOUT,
                 t1,
-                PREPARE_TARGET_DELAY_MS,
+                prepare_delay_ms,
                 Sync.PREPARE,
                 cmd_id,
                 seq_no
@@ -151,7 +151,7 @@ async def get_buckler_ch(buckler):
 
 # https://bleak.readthedocs.io/en/latest/usage.html
 async def run():
-    global led_status, l_drive, r_drive
+    global prepare_delay_ms
     print("searching for DDDs...")
     buckler_0 = None
     buckler_1 = None
@@ -186,35 +186,43 @@ async def run():
 
         seq_no = random.randint(0, 256)
         while True:
-            seq_no += 1
-            seq_no %= 256 # Ensure doesn't overflow byte
-            cmd = input(f"ddd seq_no={seq_no}> ").strip()
-            if cmd == "q":
-                print("quitting")
-                break
-            if cmd in CMD_LUT:
-                print(f"# Beginning 2PC sequence {seq_no}")
-                cmd_id = CMD_LUT[cmd]
-                t1 = now_ms()
-                err0, err1 = await asyncio.gather(
-                    ch_0.prepare(seq_no, t1, cmd_id),
-                    ch_1.prepare(seq_no, t1, cmd_id)
-                )
-                if not err0 or not err1:
-                    print("# Aborting 2PC")
-                    await asyncio.gather(
-                        ch_0.abort(seq_no),
-                        ch_1.abort(seq_no)
+            try:
+                seq_no += 1
+                seq_no %= 256 # Ensure doesn't overflow byte
+                cmd = input(f"ddd seq_no={seq_no}> ").strip()
+                toks = cmd.split()
+                if cmd in ("q", "quit", "exit"):
+                    print("quitting")
+                    break
+                elif len(toks) > 0 and toks[0] == "setdelay":
+                    prepare_delay_ms = int(toks[1])
+                elif cmd in CMD_LUT:
+                    print(f"# Beginning 2PC sequence {seq_no}")
+                    cmd_id = CMD_LUT[cmd]
+                    t1 = now_ms()
+                    err0, err1 = await asyncio.gather(
+                        ch_0.prepare(seq_no, t1, cmd_id),
+                        ch_1.prepare(seq_no, t1, cmd_id)
                     )
-                    continue
-                c0, c1 = await asyncio.gather(
-                    ch_0.commit(seq_no, err0),
-                    ch_1.commit(seq_no, err1)
-                )
-                if not c0 or not c1:
-                    print("# Missed a 2PC ACK (nothing left to do)")
-            else:
-                print(f"invalid command: {cmd}")
+                    if not err0 or not err1:
+                        print("# Aborting 2PC")
+                        await asyncio.gather(
+                            ch_0.abort(seq_no),
+                            ch_1.abort(seq_no)
+                        )
+                        continue
+                    c0, c1 = await asyncio.gather(
+                        ch_0.commit(seq_no, err0),
+                        ch_1.commit(seq_no, err1)
+                    )
+                    if not c0 or not c1:
+                        print("# Missed a 2PC ACK (nothing left to do)")
+                else:
+                    print(f"invalid command: {cmd}")
+            except KeyboardInterrupt:
+                break
+            except:
+                pass
     finally:
         await asyncio.gather(buckler_0.disconnect(), buckler_1.disconnect())
 
