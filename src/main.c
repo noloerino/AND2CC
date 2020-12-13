@@ -6,6 +6,7 @@
 
 #include "app_error.h"
 #include "nrf.h"
+#include "nrf_atfifo.h"
 #include "nrf_delay.h"
 #include "nrf_gpio.h"
 #include "nrf_log.h"
@@ -137,7 +138,7 @@ int main(void) {
   display_init(&spi_instance);
   printf("Display initialized\n");
   nrf_delay_ms(10);
-  display_write("disp init", 0);
+  display_write("Hello, I'm " DDD_ROBOT_ID_STR, 0);
 
   pixy_t *pixy;
   pixy_error_check(pixy_init(&pixy, &pixy_spi), "initialize", true);
@@ -197,15 +198,6 @@ int main(void) {
       nrf_gpio_pin_set(BUCKLER_LED0);
     }
 
-    bool button_pressed = is_button_pressed(&sensors);
-    // Button press forces return to OFF state
-    if (state != OFF && button_pressed) {
-      printf("Button pressed; returning to OFF");
-      state = OFF;
-      // Turn docking LED back off
-      nrf_gpio_pin_set(BUCKLER_LED1);
-    }
-
     switch (state) {
       case OFF: {
         display_write("OFF", 0);
@@ -241,8 +233,12 @@ int main(void) {
         pixy_get_blocks(pixy, false, CCC_SIG1 | CCC_SIG2, CCC_MAX_BLOCKS);
         pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks, pixy->frame_width, pixy->frame_height);
         if (docked) {
+          speed_left = 0;
+          speed_right = 0;
           // Turn on LED1 to indicate that we've at least docked once now
           nrf_gpio_pin_clear(BUCKLER_LED1);
+          ddd_ble_init();
+          nrf_atfifo_t *ble_cmd_q = get_ble_cmd_q();
           state = DOCKED;
           printf("TARGET -> DOCKED\n");
         } else if (block != NULL) {
@@ -263,9 +259,72 @@ int main(void) {
       }
       case DOCKED: {
         display_write("DOCKED", 0);
-        speed_left = 0;
-        speed_right = 0;
-        // Await BLE command
+        // Check the command queue for a message
+        // TODO for the time being, the arrival of a BLE command will override whatever's happening
+        // in the rest of the main loop
+        // Eventually, these will need to be integrated together
+        ddd_ble_cmd_t cmd = { 0 };
+        const int16_t TEST_DRV_SPD = 70;
+        if (nrf_atfifo_get_free(ble_cmd_q, &cmd, sizeof(ddd_ble_cmd_t), NULL) != NRF_ERROR_NOT_FOUND) {
+          switch (cmd) {
+            case DDD_BLE_LED_ON: {
+              display_write("[ble] LED ON", 1);
+              nrf_gpio_pin_clear(BUCKLER_LED2);
+              break;
+            }
+            case DDD_BLE_LED_OFF: {
+              display_write("[ble] LED OFF", 1);
+              nrf_gpio_pin_set(BUCKLER_LED2);
+              break;
+            }
+            case DDD_BLE_DRV_LEFT: {
+              display_write("[ble] LEFT", 1);
+              speed_left = -TEST_DRV_SPD;
+              speed_right = TEST_DRV_SPD;
+              break;
+            }
+            case DDD_BLE_DRV_RIGHT: {
+              display_write("[ble] RIGHT", 1);
+              speed_left = TEST_DRV_SPD;
+              speed_right = -TEST_DRV_SPD;
+              break;
+            }
+            case DDD_BLE_DRV_FORWARD: {
+              display_write("[ble] FORWARD", 1);
+              if (DDD_ROBOT_ID == 0) {
+                speed_left = TEST_DRV_SPD;
+                speed_right = TEST_DRV_SPD;
+              } else {
+                speed_left = -TEST_DRV_SPD;
+                speed_right = -TEST_DRV_SPD;
+              }
+              break;
+            }
+            case DDD_BLE_DRV_BACKWARD: {
+              display_write("[ble] BACKWARD", 1);
+              if (DDD_ROBOT_ID == 0) {
+                speed_left = -TEST_DRV_SPD;
+                speed_right = -TEST_DRV_SPD;
+              } else {
+                speed_left = TEST_DRV_SPD;
+                speed_right = TEST_DRV_SPD;
+              }
+              break; 
+            }
+            case DDD_BLE_DRV_ZERO: {
+              display_write("[ble] ZERO", 1);
+              speed_left = 0.0;
+              speed_right = 0.0;
+              break;
+            }
+            default:
+              printf("Unhandled command\n");
+              display_write("[ble] INVALID", 1);
+              speed_left = 0.0;
+              speed_right = 0.0;
+              break;
+          }
+        }
       }
       default: {
         display_write("INVALID STATE", 0);
