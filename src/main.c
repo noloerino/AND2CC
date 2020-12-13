@@ -17,6 +17,7 @@
 #include "nrfx_gpiote.h"
 #include "nrf_drv_spi.h"
 
+#include "lsm9ds1.h"
 #include "buckler.h"
 #include "display.h"
 #include "pixy2.h"
@@ -30,17 +31,24 @@
 
 #define ANGLE_DECAY  0.4
 #define ANGLE_K_P    2.0
-#define SPEED_TARGET_BASE 60
+#define SPEED_TARGET_BASE  60 // mm/s
 #define CHASSIS_BASE_WIDTH 140 // mm
 #define TARGET_FAIL_COUNT_THRESHOLD 50
 
+#define BACKOFF_TILT_TRIGGER_THRESHOLD 10 // degrees
+#define BACKOFF_TILT_RETURN_THRESHHOLD 5 // degrees, prevents oscillation
+
 #define DOCK_POWER NRF_GPIO_PIN_MAP(0, 3)
 #define DOCK_DETECT NRF_GPIO_PIN_MAP(0, 4)
+
+NRF_TWI_MNGR_DEF(twi_mngr_instance, 5, 0);
+
 
 typedef enum {
   OFF,
   SPIN,
   TARGET,
+  BACKOFF,
   DOCKED,
 } robot_state_t;
 
@@ -90,6 +98,18 @@ float clip(float f, float low, float high) {
   return f;
 }
 
+float read_tilt() {
+  // Tilt on y-axis is given by psi
+  lsm9ds1_measurement_t accel = lsm9ds1_read_accelerometer();
+  float a_x = accel.x_axis; 
+  float a_y = accel.y_axis;
+  float a_z = accel.z_axis;
+  return 180 / M_PI * atan2(a_y, sqrt(a_x * a_x + a_z * a_z)); 
+  /*printf("theta: %f\tpsi: %f\tphi: %f\n",
+            atan2(a_x, sqrt(a_y * a_y + a_z * a_z)),
+            atan2(a_y, sqrt(a_x * a_x + a_z * a_z)),
+            atan2(sqrt(a_x * a_x + a_y * a_y), a_z));*/
+}
 
 int main(void) {
   ret_code_t error_code = NRF_SUCCESS;
@@ -152,6 +172,15 @@ int main(void) {
   
   pixy_error_check(pixy_set_lamp(pixy, 100, 100), "set lamp", true);
 
+  nrf_drv_twi_config_t i2c_config = NRF_DRV_TWI_DEFAULT_CONFIG;
+  i2c_config.scl = BUCKLER_SENSORS_SCL;
+  i2c_config.sda = BUCKLER_SENSORS_SDA;
+  i2c_config.frequency = NRF_TWIM_FREQ_100K;
+  error_code = nrf_twi_mngr_init(&twi_mngr_instance, &i2c_config);
+  APP_ERROR_CHECK(error_code);
+  lsm9ds1_init(&twi_mngr_instance);
+  printf("IMU initialized!\n");
+
   kobukiInit();
   printf("Kobuki initialized\n");
 
@@ -185,7 +214,7 @@ int main(void) {
   //   state = DOCKED;
   //   ddd_ble_init();
   // }
-  
+
   while(true) {
     kobukiSensorPoll(&sensors);
 
@@ -240,7 +269,9 @@ int main(void) {
         display_write("TARGET", 0);
         pixy_get_blocks(pixy, false, CCC_SIG1 | CCC_SIG2, CCC_MAX_BLOCKS);
         pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks, pixy->frame_width, pixy->frame_height);
-        if (docked) {
+        if (read_tilt() > BACKOFF_TILT_TRIGGER_THRESHOLD) {
+          state = BACKOFF;
+        } else if (docked) {
           speed_left = 0;
           speed_right = 0;
           // Turn on LED1 to indicate that we've at least docked once now
@@ -266,6 +297,18 @@ int main(void) {
             state = SPIN;
             printf("TARGET -> SPIN\n");
           }
+        }
+        break;
+      }
+      case BACKOFF: {
+        display_write("BACKOFF", 0);
+        if (read_tilt() > BACKOFF_TILT_RETURN_THRESHHOLD) {
+          // For both robots, backing off entails going "forward"
+          speed_left = 40;
+          speed_right = 40;
+        } else {
+          printf("BACKOFF -> TARGET\n");
+          state = TARGET;
         }
         break;
       }
