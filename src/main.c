@@ -20,6 +20,7 @@
 #include "buckler.h"
 #include "display.h"
 #include "pixy2.h"
+#include "ddd_ble.h"
 
 #include "kobukiActuator.h"
 #include "kobukiSensorPoll.h"
@@ -204,8 +205,13 @@ int main(void) {
         speed_left = 0;
         speed_right = 0;
         
-        if (button_pressed) {
-          state = SPIN;
+        if (is_button_pressed(&sensors)) {
+          {
+            // TODO get rid of this
+            state = DOCKED;
+            ddd_ble_init();
+          }
+          // state = SPIN;
           printf("OFF -> SPIN\n");
         }
         break;
@@ -238,7 +244,6 @@ int main(void) {
           // Turn on LED1 to indicate that we've at least docked once now
           nrf_gpio_pin_clear(BUCKLER_LED1);
           ddd_ble_init();
-          nrf_atfifo_t *ble_cmd_q = get_ble_cmd_q();
           state = DOCKED;
           printf("TARGET -> DOCKED\n");
         } else if (block != NULL) {
@@ -259,6 +264,7 @@ int main(void) {
       }
       case DOCKED: {
         display_write("DOCKED", 0);
+        nrf_atfifo_t *ble_cmd_q = get_ble_cmd_q();
         // Check the command queue for a message
         // TODO for the time being, the arrival of a BLE command will override whatever's happening
         // in the rest of the main loop
@@ -325,6 +331,7 @@ int main(void) {
               break;
           }
         }
+        break;
       }
       default: {
         display_write("INVALID STATE", 0);
