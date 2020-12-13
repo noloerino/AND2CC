@@ -5,6 +5,7 @@
 #include <math.h>
 
 #include "app_error.h"
+#include "app_timer.h"
 #include "nrf.h"
 #include "nrf_atfifo.h"
 #include "nrf_delay.h"
@@ -151,6 +152,8 @@ int main(void) {
   // printf("resolution: %d x %d\n", pixy->frame_width, pixy->frame_height);
   
   // pixy_error_check(pixy_set_lamp(pixy, 100, 100), "set lamp", true);
+
+  app_timer_init();
 
   kobukiInit();
   printf("Kobuki initialized\n");

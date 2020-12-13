@@ -35,8 +35,10 @@ typedef enum {
 // Enums are replaced by uint types to make width predictable as well.
 typedef struct {
   // Timestamp fields
-  uint32_t ts0; // t1 on a 2PC prepare, t4 on a commit
-  uint32_t ts1; // target delay on 2PC prepare, ignored otherwise
+  union {
+    uint32_t target; // target delay on a 2PC prepare
+    int32_t e; // clock error on a 2PC commit
+  } ts0;
   // IDs whether this is a 2PC prepare, commit, or abort command.
   uint8_t sync_req_id;
   // IDs a ddd_ble_cmd_t (should be checked only on 2PC prepare).

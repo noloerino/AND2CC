@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "app_error.h"
+#include "app_timer.h"
 #include "nrf_gpio.h"
 #include "nrf_atfifo.h"
 
@@ -51,8 +52,8 @@ void ble_evt_write(ble_evt_t const *p_ble_evt) {
     switch (ble_req.sync_req_id) {
       case SYNC_2PC_CMD_PREPARE: {
         prepared_cmd = (ddd_ble_cmd_t) ble_req.cmd_id;
-        printf("[sync] Received 2PC prepare %hhu\n", prepared_cmd);
-        ble_resp.t2 = 0; // TODO
+        printf("[sync] Received 2PC prepare (cmd=%hhu, seq=%hhu)\n", prepared_cmd, seq_no);
+        ble_resp.t2 = (uint32_t) (APP_TIMER_CLOCK_FREQ * 1000 / app_timer_cnt_get());
         ble_resp.sync_resp_id = (uint8_t) SYNC_2PC_RESP_VOTE_COMMIT;
         ble_resp.seq_no = seq_no;
         break;
@@ -62,7 +63,7 @@ void ble_evt_write(ble_evt_t const *p_ble_evt) {
         APP_ERROR_CHECK(
           nrf_atfifo_alloc_put(ble_cmd_q, &prepared_cmd, sizeof(ddd_ble_cmd_t), NULL)
         );
-        printf("[sync] Acknowledging 2PC commit\n");
+        printf("[sync] Acknowledging 2PC commit (seq=%hhu)\n", seq_no);
         // Strictly speaking we should send a fail response if alloc_put fails
         ble_resp.t2 = 0;
         ble_resp.sync_resp_id = (uint8_t) SYNC_2PC_RESP_ACK;
@@ -71,14 +72,14 @@ void ble_evt_write(ble_evt_t const *p_ble_evt) {
       }
       case SYNC_2PC_CMD_ABORT: {
         prepared_cmd = DDD_BLE_INVALID;
-        printf("[sync] Acknowledging 2PC abort\n");
+        printf("[sync] Acknowledging 2PC abort (seq=%hhu)\n", seq_no);
         ble_resp.t2 = 0;
         ble_resp.sync_resp_id = (uint8_t) SYNC_2PC_RESP_ACK;
         ble_resp.seq_no = seq_no;
         break;
       }
       default: {
-        printf("[sync] Invalid 2PC command %hhu\n", ble_req.sync_req_id);
+        printf("[sync] Invalid 2PC command %hhu (seq=%hhu)\n", ble_req.sync_req_id, seq_no);
         ble_resp.t2 = 0;
         ble_resp.sync_resp_id = (uint8_t) SYNC_2PC_RESP_INVALID;
         ble_resp.seq_no = seq_no;
@@ -97,18 +98,25 @@ void ble_evt_disconnected(ble_evt_t const*p_ble_evt) {
   );
 }
 
+void empty_callback(void *p_context) { }
+
 void ddd_ble_init() {
-  simple_ble_app = simple_ble_init(&ble_config);
-  simple_ble_add_service(&led_service);
-  simple_ble_add_characteristic(1, 1, 0, 0,
-    sizeof(ble_req), (uint8_t*) &ble_req,
-    &led_service, &req_state_char);
-  simple_ble_add_characteristic(1, 0, 0, 0,
-    sizeof(ble_resp), (uint8_t*) &ble_resp,
-    &led_service, &resp_state_char);
-  APP_ERROR_CHECK(
-    NRF_ATFIFO_INIT(ble_cmd_q)
-  );
-  simple_ble_adv_only_name();
-  printf("Initialized DDD BLE\n");
+  static bool has_ble_init = false;
+  if (!has_ble_init) {
+    // Initialize softdevice stuff
+    simple_ble_app = simple_ble_init(&ble_config);
+    simple_ble_add_service(&led_service);
+    simple_ble_add_characteristic(1, 1, 0, 0,
+      sizeof(ble_req), (uint8_t*) &ble_req,
+      &led_service, &req_state_char);
+    simple_ble_add_characteristic(1, 0, 0, 0,
+      sizeof(ble_resp), (uint8_t*) &ble_resp,
+      &led_service, &resp_state_char);
+    APP_ERROR_CHECK(
+      NRF_ATFIFO_INIT(ble_cmd_q)
+    );
+    simple_ble_adv_only_name();
+    has_ble_init = true;
+    printf("Initialized DDD BLE\n");
+  }
 }

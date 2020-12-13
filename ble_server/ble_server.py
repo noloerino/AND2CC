@@ -2,6 +2,7 @@
 
 import asyncio
 import struct
+import random
 import time
 from bleak import BleakClient, BleakScanner
 
@@ -19,8 +20,9 @@ DDD_RESP_CHAR_UUID = "32e6108c-2b22-4db5-a914-43ce41986c70"
 CONN_TIMEOUT = 20.0 # seconds
 
 # < means little endian
-# L means unsigned long (4B), B means unsigned byte
-REQ_LAYOUT = "<LLBBB"
+# L means unsigned long (4B), l means signed long, B means unsigned byte
+REQ_PREPARE_LAYOUT = "<LBBB"
+REQ_COMMIT_LAYOUT = "<lBBB"
 RESP_LAYOUT = "<LBBH"
 
 class Sync:
@@ -45,6 +47,12 @@ CMD_LUT = {
 
 PREPARE_TARGET_DELAY_MS = 2000
 
+start_ms = int(time.time() * 1000)
+
+def now_ms():
+    # Can't use process_time since we're probably sleeping a lot with async
+    return int(time.time() * 1000) - start_ms
+
 class Channels:
     def __init__(self, i, buckler, pair):
         self.id = i
@@ -53,20 +61,23 @@ class Channels:
         self.resp_ch = pair[1]
 
     async def prepare(self, seq_no, t1, cmd_id):
+        """
+        Performs a 2PC prepare.
+
+        Returns the rough clock error if the result is valid, or None if the the result was invalid.
+        """
         i = self.id
         print(f"# {i} sending 2PC prepare [t1={t1}]")
         # PTP/2PC from leader to follower
         await self.buckler.write_gatt_char(
             self.req_ch,
             # Prepare:
-            # - t1 [ms]: u32
             # - target offset from t1 [ms]: u32
             # - 2PC command: u8
             # - robot command: u8
             # - seq_no: u8
             struct.pack(
-                REQ_LAYOUT,
-                t1,
+                REQ_PREPARE_LAYOUT,
                 PREPARE_TARGET_DELAY_MS,
                 Sync.PREPARE,
                 cmd_id,
@@ -75,22 +86,27 @@ class Channels:
             response=True
         )
         # PTP/2PC from follower to leader
-        t2, sync_resp_id, resp_seq_no, _ = struct.unpack(
+        t2_e, sync_resp_id, resp_seq_no, _ = struct.unpack(
             RESP_LAYOUT,
             await self.buckler.read_gatt_char(self.resp_ch)
         )
+        t4 = now_ms()
+        # Peripheral assumes t2 = t3 (we don't need that kind of granularity)
+        rtt = t4 - t1
+        err = t2_e - t1 + rtt // 2
+        print(f"# {i} estimated RTT: {rtt}; e: {err}")
         if resp_seq_no != seq_no:
             print(f"# {i} unexpected sequence number: got {resp_seq_no}, exp {seq_no}")
-            return False
+            return None
         if sync_resp_id == Sync.VOTE_COMMIT:
-            print(f"# {i} voted commit [t2={t2}]")
-            return True
+            print(f"# {i} voted commit [t2+e={t2_e}, t4={t4}]")
+            return err
         elif sync_resp_id == Sync.VOTE_ABORT:
             print(f"# {i} voted abort")
-            return False
+            return None
         else:
             print(f"# {i} voted invalid ({sync_resp_id})")
-            return False
+            return None
 
     async def wait_for_ack(self, seq_no):
         _, sync_resp_id, resp_seq_no, _ = struct.unpack(
@@ -102,17 +118,16 @@ class Channels:
             return False
         return sync_resp_id == Sync.ACK
 
-    async def commit(self, seq_no, t4):
-        print(f"# {self.id} sending 2PC commit")
+    async def commit(self, seq_no, err):
+        print(f"# {self.id} sending 2PC commit [e={err}]")
         await self.buckler.write_gatt_char(
             self.req_ch,
             # Commit:
-            # - t4 [ms]: u32
-            # - _: u32
+            # - e: i32
             # - 2PC command: u8
             # - _: u8
             # - seq_no: u8
-            struct.pack(REQ_LAYOUT, t4, 0, Sync.COMMIT, 0, seq_no),
+            struct.pack(REQ_COMMIT_LAYOUT, err, Sync.COMMIT, 0, seq_no),
             response=True
         )
         return await self.wait_for_ack(seq_no)
@@ -121,7 +136,7 @@ class Channels:
         print(f"# {self.id} sending 2PC abort")
         await self.buckler.write_gatt_char(
             self.req_ch,
-            struct.pack(REQ_LAYOUT, 0, 0, Sync.ABORT, 0),
+            struct.pack(REQ_PREPARE_LAYOUT, 0, Sync.ABORT, 0),
             response=False
         )
         return await self.wait_for_ack(seq_no)
@@ -174,30 +189,30 @@ async def run():
         # ch_1 = Channels(1, buckler_1, channel_pairs[1])
         print("Both DDDs ready!")
 
-        seq_no = 0
+        seq_no = random.randint(0, 256)
         while True:
             seq_no += 1
-            cmd = input("ddd> ").strip()
+            seq_no %= 256 # Ensure doesn't overflow byte
+            cmd = input(f"ddd seq_no={seq_no}> ").strip()
             if cmd == "q":
                 print("quitting")
                 break
             if cmd in CMD_LUT:
-                print("# Beginning 2PC sequence")
+                print(f"# Beginning 2PC sequence {seq_no}")
                 cmd_id = CMD_LUT[cmd]
-                t1 = int(time.process_time() * 1000)
+                t1 = now_ms()
                 # [p1, p2] = await asyncio.gather(
                 #     ch_0.prepare(t1, cmd_id),
                 #     ch_1.prepare(t1, cmd_id),
                 # )
-                p1 = await ch_0.prepare(seq_no, t1, cmd_id)
-                if not p1:
+                err0 = await ch_0.prepare(seq_no, t1, cmd_id)
+                if not err0:
                     print("# Aborting 2PC")
                     await ch_0.abort(seq_no)
                     continue
-                t4 = int(time.process_time() * 1000)
-                c1 = await ch_0.commit(seq_no, t4)
-                if not c1:
-                    print("# Didn't get 2PC ACK, oh well")
+                c0 = await ch_0.commit(seq_no, err0)
+                if not c0:
+                    print("# Didn't get 2PC ACK (nothing left to do)")
             else:
                 print(f"invalid command: {cmd}")
     finally:
