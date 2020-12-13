@@ -25,23 +25,42 @@
 #include "kobukiSensorTypes.h"
 #include "kobukiUtilities.h"
 
-void check_status(int8_t code, const char *label, bool print_on_success) {
+
+#define ANGLE_DECAY  0.4
+#define ANGLE_K_P    2.0
+#define SPEED_TARGET 60  // mm/s
+#define CHASSIS_BASE_WIDTH 140 // mm
+#define TARGET_FAIL_COUNT_THRESHOLD 50
+
+typedef enum {
+  OFF,
+  SPIN,
+  TARGET
+} robot_state_t;
+
+void pixy_error_check(int8_t code, const char *label, bool print_on_success) {
   if (code != PIXY_RESULT_OK)
     printf("%s failed with %d\n", label, code);
   else if (print_on_success)
     printf("%s succeeded\n", label);
 }
 
-pixy_block_t *select_block(pixy_block_t *blocks, int8_t num_blocks) {
+pixy_block_t *select_block(pixy_block_t *blocks, int8_t num_blocks, uint16_t frame_width, uint16_t frame_height) {
   if (num_blocks <= 0)
     return NULL;
-  // pick oldest one
+  // Prioritize 
   uint8_t max_age = 0;
   pixy_block_t *block = NULL;
+  uint8_t sig = 0;
   for (int8_t i = 0; i < num_blocks; ++i) {
-    if (blocks[i].m_age >= max_age) {
+    pixy_print_block(&blocks[i]);
+    if (sig == CCC_SIG2 && blocks[i].m_signature != CCC_SIG2) {
+      continue;
+    }
+    if (blocks[i].m_age >= max_age && blocks[i].m_x <= frame_width && blocks[i].m_y <= frame_height) {
       max_age = blocks[i].m_age;
       block = &blocks[i];
+      sig = blocks[i].m_signature;
     }
   }
   return block;
@@ -65,7 +84,6 @@ float clip(float f, float low, float high) {
   return f;
 }
 
-pixy_t *pixy;
 
 int main(void) {
   ret_code_t error_code = NRF_SUCCESS;
@@ -112,63 +130,98 @@ int main(void) {
   nrf_delay_ms(10);
 
   // initialize display driver
-   display_init(&spi_instance);
-   printf("Display initialized\n");
-   nrf_delay_ms(10);
-   display_write("disp init", 0);
+  display_init(&spi_instance);
+  printf("Display initialized\n");
+  nrf_delay_ms(10);
+  display_write("disp init", 0);
 
-  check_status(pixy_init(&pixy, &pixy_spi), "initialize", true);
+  pixy_t *pixy;
+  pixy_error_check(pixy_init(&pixy, &pixy_spi), "initialize", true);
   pixy_print_version(pixy->version);
 
-  check_status(pixy_set_led(pixy, 0, 255, 0), "set led", true);
+  pixy_error_check(pixy_set_led(pixy, 0, 255, 0), "set led", true);
 
-  check_status(pixy_get_resolution(pixy), "get resolution", true);
+  pixy_error_check(pixy_get_resolution(pixy), "get resolution", true);
   printf("resolution: %d x %d\n", pixy->frame_width, pixy->frame_height);
   
-  check_status(pixy_set_lamp(pixy, 255, 255), "set lamp", true);
+  pixy_error_check(pixy_set_lamp(pixy, 100, 100), "set lamp", true);
 
   kobukiInit();
   printf("Kobuki initialized\n");
 
+  robot_state_t state = OFF;
   KobukiSensors_t sensors = {0};
-
-  const float speed_target = 100;
   float speed_left = 0;
   float speed_right = 0;
-  const float base_width = 140;
-  const float k_p = 2.0;
-  const float decay =  0.95;
-
   float angle = 0;
-  float new_factor = 0.5;
+  uint32_t target_fail_count = 0;
   
   while(true) {
     kobukiSensorPoll(&sensors);
-    kobukiDriveDirect((int16_t)speed_left, (int16_t)speed_right);
 
-    int8_t ec = pixy_get_blocks(pixy, false, CCC_SIG_ALL, CCC_MAX_BLOCKS);
-    if (ec < 0) {
-      //printf("get blocks error: %d\n", ec);
-    } else {
-      //printf("got %d blocks\n", ec);
-    }
-    if (pixy->num_blocks > 0) {
-      pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks);
-      if (block->m_x <= pixy->frame_width && block->m_y <= pixy->frame_height) {
-        const float new_angle = ((M_PI / 3.0) / pixy->frame_width) * block->m_x - (M_PI / 6.0);
-        angle = (1-new_factor) * angle + new_factor * new_angle;
-        float delta = (base_width / 2.0) * k_p * angle;
-        speed_left = -speed_target + delta;
-        speed_right = -speed_target - delta; 
+    // Set speeds based on speed_left and speed_right.
+    int16_t v_left = 0;
+    int16_t v_right = 0;
+    //if (fabs(speed_left) > 0)
+    v_left = (int16_t)clip(speed_left, INT16_MIN, INT16_MAX);
+    //if (fabs(speed_right) > 30) 
+    v_right = (int16_t)clip(speed_right, INT16_MIN, INT16_MAX);
+    kobukiDriveDirect(v_left, v_right);
+
+    switch (state) {
+      case OFF: {
+        display_write("OFF", 0);
+        speed_left = 0;
+        speed_right = 0;
+        
+        if (is_button_pressed(&sensors)) {
+          state = SPIN;
+          printf("OFF -> SPIN\n");
+        }
+        break;
+      }
+      case SPIN: {
+        display_write("SPIN", 0);
+        speed_left = -60;
+        speed_right = 60;
+        int8_t ec = pixy_get_blocks(pixy, false, CCC_SIG1 | CCC_SIG2, CCC_MAX_BLOCKS);
+        if (ec < 0) {
+          printf("failed to get blocks with error code %d\n", ec);
+        } else {
+          //printf("got %d blocks\n", ec);
+        }
+        pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks, pixy->frame_width, pixy->frame_height);
+        if (block != NULL) {
+          state = TARGET;
+          target_fail_count = 0;
+          printf("SPIN -> TARGET\n");
+        }
+        break;
+      }
+      case TARGET: {
+        display_write("TARGET", 0);
+        pixy_get_blocks(pixy, false, CCC_SIG1 | CCC_SIG2, CCC_MAX_BLOCKS);
+        pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks, pixy->frame_width, pixy->frame_height);
+        if (block != NULL) {
+          const float new_angle = ((M_PI / 3.0) / pixy->frame_width) * block->m_x - (M_PI / 6.0);
+          angle = ANGLE_DECAY * angle + (1 - ANGLE_DECAY) * new_angle;
+          const float delta = (CHASSIS_BASE_WIDTH / 2.0) * ANGLE_K_P * angle;
+          speed_left = -SPEED_TARGET + delta;
+          speed_right = -SPEED_TARGET - delta; 
+          target_fail_count = 0;
+        } else {
+          ++target_fail_count;
+          if (target_fail_count > TARGET_FAIL_COUNT_THRESHOLD) {
+            state = SPIN;
+            printf("TARGET -> SPIN\n");
+          }
+        }
+        break;
+      }
+      default: {
+        printf("error: default state\n");
       }
     }
-
-    speed_left *= decay;
-    speed_right *= decay;
-
-    int16_t v_left = (int16_t)clip(speed_left, INT16_MIN, INT16_MAX);
-    int16_t v_right = (int16_t)clip(speed_right, INT16_MIN, INT16_MAX);
-    printf("angle: %f    speed: %d    %d\n", angle * 180.0 / M_PI, v_left, v_right);
 
     nrf_delay_ms(10);
   }
