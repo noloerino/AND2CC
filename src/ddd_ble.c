@@ -26,9 +26,14 @@ static simple_ble_service_t led_service = {{
               0xB5,0x4D,0x22,0x2B,0x89,0x10,0xE6,0x32}
 }};
 
-static simple_ble_char_t led_state_char = {.uuid16 = 0x108a};
+// LED was 108a
+static simple_ble_char_t req_state_char = {.uuid16 = 0x108B};
+static simple_ble_char_t resp_state_char = {.uuid16 = 0x108C};
 
-static ddd_ble_state_t ble_state = { 0 };
+static ddd_ble_req_t ble_req = { 0 };
+// Strictly speaking, this isn't a response - rather, it's a read-only characteristic
+// set after req is updated
+static ddd_ble_resp_t ble_resp = { 0 };
 
 simple_ble_app_t *simple_ble_app;
 
@@ -39,16 +44,47 @@ nrf_atfifo_t *get_ble_cmd_q() {
   return ble_cmd_q;
 }
 
-ddd_ble_state_t *get_ble_state() {
-  return &ble_state;
-}
-
 void ble_evt_write(ble_evt_t const *p_ble_evt) {
-  if (simple_ble_is_char_event(p_ble_evt, &led_state_char)) {
-    ddd_ble_cmd_t cmd = (ddd_ble_cmd_t) ble_state.cmd_id;
-    APP_ERROR_CHECK(
-      nrf_atfifo_alloc_put(ble_cmd_q, &cmd, sizeof(ddd_ble_cmd_t), NULL)
-    );
+  static ddd_ble_cmd_t prepared_cmd = DDD_BLE_INVALID;
+  if (simple_ble_is_char_event(p_ble_evt, &req_state_char)) {
+    uint8_t seq_no = ble_req.seq_no;
+    switch (ble_req.sync_req_id) {
+      case SYNC_2PC_CMD_PREPARE: {
+        prepared_cmd = (ddd_ble_cmd_t) ble_req.cmd_id;
+        printf("[sync] Received 2PC prepare %hhu\n", prepared_cmd);
+        ble_resp.t2 = 0; // TODO
+        ble_resp.sync_resp_id = (uint8_t) SYNC_2PC_RESP_VOTE_COMMIT;
+        ble_resp.seq_no = seq_no;
+        break;
+      }
+      case SYNC_2PC_CMD_COMMIT: {
+        // TODO check PTP time sync; if time too long then just don't do the job
+        APP_ERROR_CHECK(
+          nrf_atfifo_alloc_put(ble_cmd_q, &prepared_cmd, sizeof(ddd_ble_cmd_t), NULL)
+        );
+        printf("[sync] Acknowledging 2PC commit\n");
+        // Strictly speaking we should send a fail response if alloc_put fails
+        ble_resp.t2 = 0;
+        ble_resp.sync_resp_id = (uint8_t) SYNC_2PC_RESP_ACK;
+        ble_resp.seq_no = seq_no;
+        break;
+      }
+      case SYNC_2PC_CMD_ABORT: {
+        prepared_cmd = DDD_BLE_INVALID;
+        printf("[sync] Acknowledging 2PC abort\n");
+        ble_resp.t2 = 0;
+        ble_resp.sync_resp_id = (uint8_t) SYNC_2PC_RESP_ACK;
+        ble_resp.seq_no = seq_no;
+        break;
+      }
+      default: {
+        printf("[sync] Invalid 2PC command %hhu\n", ble_req.sync_req_id);
+        ble_resp.t2 = 0;
+        ble_resp.sync_resp_id = (uint8_t) SYNC_2PC_RESP_INVALID;
+        ble_resp.seq_no = seq_no;
+        break;
+      }
+    }
   }
 }
 
@@ -65,11 +101,14 @@ void ddd_ble_init() {
   simple_ble_app = simple_ble_init(&ble_config);
   simple_ble_add_service(&led_service);
   simple_ble_add_characteristic(1, 1, 0, 0,
-    sizeof(ble_state), (uint8_t*) &ble_state,
-    &led_service, &led_state_char);
+    sizeof(ble_req), (uint8_t*) &ble_req,
+    &led_service, &req_state_char);
+  simple_ble_add_characteristic(1, 0, 0, 0,
+    sizeof(ble_resp), (uint8_t*) &ble_resp,
+    &led_service, &resp_state_char);
   APP_ERROR_CHECK(
     NRF_ATFIFO_INIT(ble_cmd_q)
   );
   simple_ble_adv_only_name();
-  printf("Initialized DDD BLE");
+  printf("Initialized DDD BLE\n");
 }

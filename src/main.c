@@ -332,7 +332,7 @@ int main(void) {
               break;
             }
             default:
-              printf("Unhandled command\n");
+              printf("Unhandled command %d\n", cmd);
               display_write("[ble] INVALID", 1);
               speed_left = 0.0;
               speed_right = 0.0;
