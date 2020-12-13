@@ -30,7 +30,7 @@
 
 #define ANGLE_DECAY  0.4
 #define ANGLE_K_P    2.0
-#define SPEED_TARGET 60  // mm/s
+#define SPEED_TARGET_BASE 60
 #define CHASSIS_BASE_WIDTH 140 // mm
 #define TARGET_FAIL_COUNT_THRESHOLD 50
 
@@ -145,18 +145,19 @@ int main(void) {
   pixy_error_check(pixy_init(&pixy, &pixy_spi), "initialize", true);
   pixy_print_version(pixy->version);
 
-  // pixy_error_check(pixy_set_led(pixy, 0, 255, 0), "set led", true);
+  pixy_error_check(pixy_set_led(pixy, 0, 255, 0), "set led", true);
 
-  // pixy_error_check(pixy_get_resolution(pixy), "get resolution", true);
-  // printf("resolution: %d x %d\n", pixy->frame_width, pixy->frame_height);
+  pixy_error_check(pixy_get_resolution(pixy), "get resolution", true);
+  printf("resolution: %d x %d\n", pixy->frame_width, pixy->frame_height);
   
-  // pixy_error_check(pixy_set_lamp(pixy, 100, 100), "set lamp", true);
+  pixy_error_check(pixy_set_lamp(pixy, 100, 100), "set lamp", true);
 
   kobukiInit();
   printf("Kobuki initialized\n");
 
   robot_state_t state = OFF;
   KobukiSensors_t sensors = {0};
+  float speed_target = SPEED_TARGET_BASE;
   float speed_left = 0;
   float speed_right = 0;
   float angle = 0;
@@ -179,11 +180,11 @@ int main(void) {
   nrf_gpio_pin_clear(DOCK_POWER);
   nrf_gpio_cfg_input(DOCK_DETECT, NRF_GPIO_PIN_PULLUP);
 
-  {
-    // TODO get rid of this
-    state = DOCKED;
-    ddd_ble_init();
-  }
+  // {
+  //   // For testing BLE
+  //   state = DOCKED;
+  //   ddd_ble_init();
+  // }
   
   while(true) {
     kobukiSensorPoll(&sensors);
@@ -244,15 +245,20 @@ int main(void) {
           speed_right = 0;
           // Turn on LED1 to indicate that we've at least docked once now
           nrf_gpio_pin_clear(BUCKLER_LED1);
+          pixy_error_check(pixy_set_lamp(pixy, 0, 0), "set lamp", true);
           ddd_ble_init();
           state = DOCKED;
           printf("TARGET -> DOCKED\n");
         } else if (block != NULL) {
+          // Slow down when nearer for improved control
+          speed_target = block->m_width > pixy->frame_width
+            ? 2 * SPEED_TARGET_BASE / 3
+            : SPEED_TARGET_BASE;
           const float new_angle = ((M_PI / 3.0) / pixy->frame_width) * block->m_x - (M_PI / 6.0);
           angle = ANGLE_DECAY * angle + (1 - ANGLE_DECAY) * new_angle;
           const float delta = (CHASSIS_BASE_WIDTH / 2.0) * ANGLE_K_P * angle;
-          speed_left = -SPEED_TARGET + delta;
-          speed_right = -SPEED_TARGET - delta; 
+          speed_left = -speed_target + delta;
+          speed_right = -speed_target - delta; 
           target_fail_count = 0;
         } else {
           ++target_fail_count;
@@ -268,7 +274,7 @@ int main(void) {
         nrf_atfifo_t *ble_cmd_q = get_ble_cmd_q();
         // Check the command queue for a message
         const int16_t DRV_SPD = 70;
-        const int16_t TURN_SPD = 125;
+        const int16_t TURN_SPD = 200;
         int ctx[0];
         // Calling get twice will relinquish the item or something
         static ddd_ble_timed_cmd_t *timed_cmd = NULL;
