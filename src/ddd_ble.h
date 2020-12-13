@@ -39,9 +39,8 @@ typedef struct {
 // manually. No unions are used to make the type layout easier to reason about on the server side.
 // Enums are replaced by uint types to make width predictable as well.
 typedef struct {
-  uint32_t t1; // PTP t1 on a 2PC prepare
   union {
-    uint32_t delay; // target delay on a 2PC prepare
+    uint32_t leader_target_ms; // target time on a 2PC prepare
     int32_t e; // clock error on a 2PC commit
   } ts;
   // IDs whether this is a 2PC prepare, commit, or abort command.

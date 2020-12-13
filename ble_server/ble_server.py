@@ -16,8 +16,8 @@ CONN_TIMEOUT = 20.0 # seconds
 
 # < means little endian
 # L means unsigned long (4B), l means signed long, B means unsigned byte
-REQ_PREPARE_LAYOUT = "<LLBBB"
-REQ_COMMIT_LAYOUT = "<LlBBB"
+REQ_PREPARE_LAYOUT = "<LBBB"
+REQ_COMMIT_LAYOUT = "<lBBB"
 RESP_LAYOUT = "<LBBH"
 
 class Sync:
@@ -65,15 +65,13 @@ class Channels:
         await self.buckler.write_gatt_char(
             self.req_ch,
             # Prepare:
-            # - t1: u32
-            # - target offset from t1 [ms]: u32
+            # - target time [ms]: u32
             # - 2PC command: u8
             # - robot command: u8
             # - seq_no: u8
             struct.pack(
                 REQ_PREPARE_LAYOUT,
-                t1,
-                prepare_delay_ms,
+                t1 + prepare_delay_ms,
                 Sync.PREPARE,
                 cmd_id,
                 seq_no
@@ -124,7 +122,7 @@ class Channels:
             # - 2PC command: u8
             # - _: u8
             # - seq_no: u8
-            struct.pack(REQ_COMMIT_LAYOUT, 0, err, Sync.COMMIT, 0, seq_no),
+            struct.pack(REQ_COMMIT_LAYOUT, err, Sync.COMMIT, 0, seq_no),
             response=True
         )
         return await self.wait_for_ack(seq_no)
@@ -133,7 +131,7 @@ class Channels:
         print(f"# {self.id} sending 2PC abort")
         await self.buckler.write_gatt_char(
             self.req_ch,
-            struct.pack(REQ_PREPARE_LAYOUT, 0, 0, Sync.ABORT, 0),
+            struct.pack(REQ_PREPARE_LAYOUT, 0, Sync.ABORT, 0),
             response=False
         )
         return await self.wait_for_ack(seq_no)

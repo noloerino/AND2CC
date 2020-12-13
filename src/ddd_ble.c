@@ -62,7 +62,7 @@ void ble_evt_write(ble_evt_t const *p_ble_evt) {
         ble_resp.t2 = ddd_ble_now_ms();
         ble_resp.sync_resp_id = (uint8_t) SYNC_2PC_RESP_VOTE_COMMIT;
         ble_resp.seq_no = seq_no;
-        target_time = ble_req.t1 + ble_req.ts.delay;
+        target_time = ble_req.ts.leader_target_ms;
         break;
       }
       case SYNC_2PC_CMD_COMMIT: {
