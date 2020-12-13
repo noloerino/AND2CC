@@ -263,6 +263,8 @@ int main(void) {
       }
       case DOCKED: {
         display_write("DOCKED", 0);
+        speed_left = 0;
+        speed_right = 0;
         // Await BLE command
       }
       default: {
