@@ -5,7 +5,6 @@
 #include <math.h>
 
 #include "app_error.h"
-#include "app_timer.h"
 #include "nrf.h"
 #include "nrf_atfifo.h"
 #include "nrf_delay.h"
@@ -153,8 +152,6 @@ int main(void) {
   
   // pixy_error_check(pixy_set_lamp(pixy, 100, 100), "set lamp", true);
 
-  app_timer_init();
-
   kobukiInit();
   printf("Kobuki initialized\n");
 
@@ -273,10 +270,16 @@ int main(void) {
         const int16_t DRV_SPD = 70;
         const int16_t TURN_SPD = 125;
         int ctx[0];
-        ddd_ble_timed_cmd_t *timed_cmd = nrf_atfifo_item_get(ble_cmd_q, (void *) &ctx);
+        // Calling get twice will relinquish the item or something
+        static ddd_ble_timed_cmd_t *timed_cmd = NULL;
+        if (timed_cmd == NULL) {
+          timed_cmd = nrf_atfifo_item_get(ble_cmd_q, (void *) &ctx);
+        }
         // Poll until expiration
-        if ((timed_cmd != NULL) && timed_cmd->tick > app_timer_cnt_get()) {
+        if (timed_cmd != NULL && timed_cmd->target_ms <= ddd_ble_now_ms()) {
+          printf("performing job scheduled for %lu\n", timed_cmd->target_ms);
           ddd_ble_cmd_t cmd = timed_cmd->cmd;
+          timed_cmd = NULL;
           switch (cmd) {
             case DDD_BLE_LED_ON: {
               display_write("[ble] LED ON", 1);
@@ -343,6 +346,9 @@ int main(void) {
           }
           nrf_atfifo_item_free(ble_cmd_q, (void *) &ctx);
         }
+        // else if (timed_cmd != NULL) {
+        //   printf("waiting for %lu, now is %lu\n", timed_cmd->target_ms, ddd_ble_now_ms());
+        // }
         break;
       }
       default: {
@@ -350,7 +356,6 @@ int main(void) {
         printf("error: default state\n");
       }
     }
-
     nrf_delay_ms(10);
   }
 }

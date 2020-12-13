@@ -1,6 +1,5 @@
 #include <stdint.h>
 #include "app_error.h"
-#include "app_timer.h"
 #include "nrf_gpio.h"
 #include "nrf_atfifo.h"
 
@@ -45,8 +44,10 @@ nrf_atfifo_t *get_ble_cmd_q() {
   return ble_cmd_q;
 }
 
-uint32_t now_ms() {
-  return (uint32_t) (APP_TIMER_CLOCK_FREQ * 1000 / app_timer_cnt_get());
+uint32_t ddd_ble_now_ms() {
+  NRF_TIMER4->TASKS_CAPTURE[1] = 1;
+  // timer runs in us
+  return NRF_TIMER4->CC[1] / 1000;
 }
 
 void ble_evt_write(ble_evt_t const *p_ble_evt) {
@@ -58,7 +59,7 @@ void ble_evt_write(ble_evt_t const *p_ble_evt) {
       case SYNC_2PC_CMD_PREPARE: {
         prepared_cmd = (ddd_ble_cmd_t) ble_req.cmd_id;
         printf("[sync] Received 2PC prepare (cmd=%hhu, seq=%hhu)\n", prepared_cmd, seq_no);
-        ble_resp.t2 = now_ms();
+        ble_resp.t2 = ddd_ble_now_ms();
         ble_resp.sync_resp_id = (uint8_t) SYNC_2PC_RESP_VOTE_COMMIT;
         ble_resp.seq_no = seq_no;
         target_time = ble_req.t1 + ble_req.ts.delay;
@@ -67,10 +68,10 @@ void ble_evt_write(ble_evt_t const *p_ble_evt) {
       case SYNC_2PC_CMD_COMMIT: {
         // Target time is of the central device, so we add the error
         uint32_t when = target_time + (int16_t) ble_req.ts.e;
-        uint32_t now = now_ms();
+        uint32_t now = ddd_ble_now_ms();
         ddd_ble_timed_cmd_t timed_cmd;
         timed_cmd.cmd = prepared_cmd;
-        timed_cmd.tick = APP_TIMER_TICKS(when);
+        timed_cmd.target_ms = when;
         APP_ERROR_CHECK(
           nrf_atfifo_alloc_put(ble_cmd_q, &timed_cmd, sizeof(timed_cmd), NULL)
         );
@@ -104,12 +105,17 @@ void ble_evt_write(ble_evt_t const *p_ble_evt) {
   }
 }
 
+static ddd_ble_timed_cmd_t disconnect_cmd = {
+  .cmd = DDD_BLE_DISCONNECT,
+  .target_ms = 0
+};
+
 void ble_evt_disconnected(ble_evt_t const*p_ble_evt) {
-  // Strictly speaking a disconnect should be prioritized over others so we should pop if
-  // the queue is full, but whatever  
-  ddd_ble_cmd_t cmd = DDD_BLE_DISCONNECT;
   APP_ERROR_CHECK(
-    nrf_atfifo_alloc_put(ble_cmd_q, &cmd, sizeof(ddd_ble_cmd_t), NULL)
+    nrf_atfifo_clear(ble_cmd_q)
+  );
+  APP_ERROR_CHECK(
+    nrf_atfifo_alloc_put(ble_cmd_q, &disconnect_cmd, sizeof(disconnect_cmd), NULL)
   );
 }
 
@@ -118,6 +124,11 @@ void empty_callback(void *p_context) { }
 void ddd_ble_init() {
   static bool has_ble_init = false;
   if (!has_ble_init) {
+    // Initialize virtual timer
+    NRF_TIMER4->BITMODE = 3; // 32-bit
+    NRF_TIMER4->PRESCALER = 4; // 1 MHz
+    NRF_TIMER4->TASKS_CLEAR = 1;
+    NRF_TIMER4->TASKS_START = 1;
     // Initialize softdevice stuff
     simple_ble_app = simple_ble_init(&ble_config);
     simple_ble_add_service(&led_service);

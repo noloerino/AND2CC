@@ -6,7 +6,7 @@ import random
 import time
 from bleak import BleakClient, BleakScanner
 
-PREPARE_TARGET_DELAY_MS = 3000
+PREPARE_TARGET_DELAY_MS = 4000
 
 DDD_SERVICE_UUID   = "32e61089-2b22-4db5-a914-43ce41986c70"
 DDD_REQ_CHAR_UUID  = "32e6108b-2b22-4db5-a914-43ce41986c70"

@@ -30,7 +30,7 @@ typedef enum {
 
 typedef struct {
   ddd_ble_cmd_t cmd;
-  uint32_t tick;
+  uint32_t target_ms;
 } ddd_ble_timed_cmd_t;
 
 // A request issued to the BLE GATT peripheral (this device) from the central (a laptop).
@@ -70,6 +70,8 @@ typedef struct {
 #define STR(x) STR_HELPER(x)
 
 #define DDD_ROBOT_ID_STR STR(DDD_ROBOT_ID)
+
+uint32_t ddd_ble_now_ms();
 
 void ddd_ble_init();
 
