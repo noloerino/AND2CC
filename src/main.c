@@ -32,11 +32,14 @@
 #define CHASSIS_BASE_WIDTH 140 // mm
 #define TARGET_FAIL_COUNT_THRESHOLD 50
 
+#define DOCK_POWER NRF_GPIO_PIN_MAP(0, 3)
+#define DOCK_DETECT NRF_GPIO_PIN_MAP(0, 4)
+
 typedef enum {
   OFF,
   SPIN,
   TARGET
-} robot_state_t;
+} top_state_t;
 
 void pixy_error_check(int8_t code, const char *label, bool print_on_success) {
   if (code != PIXY_RESULT_OK)
@@ -149,12 +152,29 @@ int main(void) {
   kobukiInit();
   printf("Kobuki initialized\n");
 
-  robot_state_t state = OFF;
+  top_state_t top_state = OFF;
   KobukiSensors_t sensors = {0};
   float speed_left = 0;
   float speed_right = 0;
   float angle = 0;
   uint32_t target_fail_count = 0;
+
+  // Initialize all 3 LEDs
+  // LED 0 (25) will be used for reaching of initial docking state
+  // LED 1 (24) will display continuity
+  // LED 2 (23) will be a BLE test thing
+  nrf_gpio_cfg_output(BUCKLER_LED0);
+  nrf_gpio_cfg_output(BUCKLER_LED1);
+  nrf_gpio_cfg_output(BUCKLER_LED2);
+  // Need to set them high to turn them off
+  nrf_gpio_pin_set(BUCKLER_LED0);
+  nrf_gpio_pin_set(BUCKLER_LED1);
+  nrf_gpio_pin_set(BUCKLER_LED2);
+
+  // Initialize docking continuity pins
+  nrf_gpio_cfg_output(DOCK_POWER);
+  nrf_gpio_pin_clear(DOCK_POWER);
+  nrf_gpio_cfg_input(DOCK_DETECT, NRF_GPIO_PIN_PULLUP);
   
   while(true) {
     kobukiSensorPoll(&sensors);
@@ -168,14 +188,14 @@ int main(void) {
     v_right = (int16_t)clip(speed_right, INT16_MIN, INT16_MAX);
     kobukiDriveDirect(v_left, v_right);
 
-    switch (state) {
+    switch (top_state) {
       case OFF: {
         display_write("OFF", 0);
         speed_left = 0;
         speed_right = 0;
         
         if (is_button_pressed(&sensors)) {
-          state = SPIN;
+          top_state = SPIN;
           printf("OFF -> SPIN\n");
         }
         break;
@@ -192,7 +212,7 @@ int main(void) {
         }
         pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks, pixy->frame_width, pixy->frame_height);
         if (block != NULL) {
-          state = TARGET;
+          top_state = TARGET;
           target_fail_count = 0;
           printf("SPIN -> TARGET\n");
         }
@@ -212,7 +232,7 @@ int main(void) {
         } else {
           ++target_fail_count;
           if (target_fail_count > TARGET_FAIL_COUNT_THRESHOLD) {
-            state = SPIN;
+            top_state = SPIN;
             printf("TARGET -> SPIN\n");
           }
         }
