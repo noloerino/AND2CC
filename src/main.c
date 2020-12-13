@@ -325,6 +325,11 @@ int main(void) {
               speed_right = 0.0;
               break;
             }
+            case DDD_BLE_DISCONNECT: {
+              display_write("[ble] DISCONNECTED", 1);
+              speed_left = 0.0;
+              speed_right = 0.0;
+            }
             default:
               printf("Unhandled command\n");
               display_write("[ble] INVALID", 1);
