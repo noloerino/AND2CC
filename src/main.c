@@ -30,13 +30,18 @@
 
 
 #define ANGLE_DECAY  0.4
-#define ANGLE_K_P    2.0
+#define ANGLE_K_P    1.0
 #define SPEED_TARGET_BASE  60 // mm/s
 #define CHASSIS_BASE_WIDTH 140 // mm
 #define TARGET_FAIL_COUNT_THRESHOLD 50
 
-#define BACKOFF_TILT_TRIGGER_THRESHOLD 10 // degrees
+#define BACKOFF_TILT_TRIGGER_THRESHOLD 15 // degrees
 #define BACKOFF_TILT_RETURN_THRESHHOLD 5 // degrees, prevents oscillation
+
+// sig1 is front of target (w/ opposing light on), sig3 is back
+#define REDSIG (CCC_SIG1)
+// sig2 is blue target (for docking)
+#define BLUESIG (CCC_SIG2)
 
 // Points in the direction of forward travel
 #if DDD_ROBOT_ID == 0
@@ -75,7 +80,7 @@ pixy_block_t *select_block(pixy_block_t *blocks, int8_t num_blocks, uint16_t fra
   uint8_t sig = 0;
   for (int8_t i = 0; i < num_blocks; ++i) {
     pixy_print_block(&blocks[i]);
-    if (sig == CCC_SIG2 && blocks[i].m_signature != CCC_SIG2) {
+    if (sig == BLUESIG && blocks[i].m_signature != BLUESIG) {
       continue;
     }
     if (blocks[i].m_age >= max_age && blocks[i].m_x <= frame_width && blocks[i].m_y <= frame_height) {
@@ -264,7 +269,7 @@ int main(void) {
       nrf_atfifo_item_free(ble_cmd_q, &ctx);
     } else if (timed_cmd != NULL && state != DOCKED) {
       // Swallow command since it's invalid
-      printf("Swalling ble command %d\n", timed_cmd->cmd);
+      printf("Swallowing ble command %d\n", timed_cmd->cmd);
       timed_cmd = NULL;
       nrf_atfifo_item_free(ble_cmd_q, &ctx);
     } else {
@@ -284,7 +289,7 @@ int main(void) {
           display_write("SPIN", 0);
           speed_left = 45;
           speed_right = -75;
-          int8_t ec = pixy_get_blocks(pixy, false, CCC_SIG1 | CCC_SIG2, CCC_MAX_BLOCKS);
+          int8_t ec = pixy_get_blocks(pixy, false, REDSIG | BLUESIG, CCC_MAX_BLOCKS);
           if (ec < 0) {
             printf("failed to get blocks with error code %d\n", ec);
           } else {
@@ -312,7 +317,7 @@ int main(void) {
         }
         case TARGET: {
           display_write("TARGET", 0);
-          pixy_get_blocks(pixy, false, CCC_SIG1 | CCC_SIG2, CCC_MAX_BLOCKS);
+          pixy_get_blocks(pixy, false, REDSIG | BLUESIG, CCC_MAX_BLOCKS);
           pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks, pixy->frame_width, pixy->frame_height);
           if (read_tilt() > BACKOFF_TILT_TRIGGER_THRESHOLD) {
             state = BACKOFF;
@@ -325,10 +330,6 @@ int main(void) {
             state = DOCKED;
             printf("TARGET -> DOCKED\n");
           } else if (block != NULL) {
-            // Slow down when nearer for improved control
-            speed_target = block->m_width > pixy->frame_width / 2
-              ? 2 * SPEED_TARGET_BASE / 3
-              : SPEED_TARGET_BASE;
             const float new_angle = ((M_PI / 3.0) / pixy->frame_width) * block->m_x - (M_PI / 6.0);
             angle = ANGLE_DECAY * angle + (1 - ANGLE_DECAY) * new_angle;
             const float delta = (CHASSIS_BASE_WIDTH / 2.0) * ANGLE_K_P * angle;

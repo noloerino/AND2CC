@@ -68,7 +68,7 @@ int16_t get_sync(pixy_t *pixy) {
       if (j >= 4) {
         return PIXY_RESULT_TIMEOUT;
       }
-      nrf_delay_ms(25);
+      nrf_delay_us(25);
       ++j;
       i = 0;
     }
@@ -300,7 +300,7 @@ int8_t pixy_get_blocks(pixy_t *pixy, bool wait, uint8_t sigmap,
       return PIXY_RESULT_ERROR; // some kind of bitstream error
 
     // If we're waiting for frame data, don't thrash Pixy with requests.
-    // We can give up half a millisecond of latency (worst case)
-    nrf_delay_ms(500);
+    // We can give up half a microsecond of latency (worst case)
+    nrf_delay_us(500);
   }
 }
