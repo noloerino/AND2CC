@@ -7,7 +7,7 @@ import time
 from bleak import BleakClient, BleakScanner
 
 prepare_delay_ms = 4000
-use_sync = True # Enables synchronization protocol
+use_sync = False # Enables synchronization protocol
 
 DDD_SERVICE_UUID     = "32e61089-2b22-4db5-a914-43ce41986c70"
 DDD_REQ_CHAR_UUID    = "32e6108b-2b22-4db5-a914-43ce41986c70"
@@ -51,9 +51,10 @@ def now_ms():
     return int(time.time() * 1000) - start_ms
 
 class Channels:
-    def __init__(self, i, buckler, chs):
+    def __init__(self, i, buckler, addr, chs):
         self.id = i
         self.buckler = buckler
+        self.addr = addr
         self.req_ch = chs[0] 
         self.resp_ch = chs[1]
         self.nosync_ch = chs[2]
@@ -150,6 +151,19 @@ class Channels:
         )
         return await self.wait_for_ack(seq_no)
 
+    async def disconnect(self):
+        return await self.buckler.disconnect()
+
+    async def try_reconnect(self):
+        if await self.buckler.is_connected():
+            print(f"{self.id} still connected, doing nothing")
+        else:
+            print(f"{self.id} attempting reconnect...")
+            self.buckler = BleakClient(self.addr)
+            self.req_ch, self.resp_ch, self.nosync_ch = await get_buckler_ch(self.buckler)
+            print(f"{self.id} reconnected")
+            return
+
 async def get_buckler_ch(buckler):
     await buckler.connect(timeout=CONN_TIMEOUT)
     # Get service
@@ -168,6 +182,8 @@ async def run():
     print("searching for DDDs...")
     buckler_0 = None
     buckler_1 = None
+    addr_0 = None
+    addr_1 = None
     while buckler_0 is None or buckler_1 is None:
         devices = await BleakScanner.discover()
         for d in devices:
@@ -176,11 +192,13 @@ async def run():
                 print(f"discovered device {d}")
                 if buckler_0 is None and "(0)" in d.name:
                     buckler_0 = BleakClient(d.address)
+                    addr_0 = d.address
                     print(f"discovered DDD 0 @ addr {d.address}")
                     if buckler_1 is not None:
                         break
                 if buckler_1 is None and "(1)" in d.name:
                     buckler_1 = BleakClient(d.address)
+                    addr_1 = d.address
                     print(f"discovered DDD 1 @ addr {d.address}")
                     if buckler_0 is not None:
                         break
@@ -195,8 +213,8 @@ async def run():
             get_buckler_ch(buckler_0),
             get_buckler_ch(buckler_1)
         )
-        ch_0 = Channels(0, buckler_0, channel_tuples[0])
-        ch_1 = Channels(1, buckler_1, channel_tuples[1])
+        ch_0 = Channels(0, buckler_0, addr_0, channel_tuples[0])
+        ch_1 = Channels(1, buckler_1, addr_1, channel_tuples[1])
         print("Both DDDs ready!")
 
         seq_no = random.randint(0, 256)
@@ -215,6 +233,8 @@ async def run():
                 elif cmd == "sync":
                     print(f"enabled sync (delay {prepare_delay_ms} ms)")
                     use_sync = True
+                elif cmd == "reset":
+                    await asyncio.gather(ch_0.try_reconnect(), ch_1.try_reconnect())
                 elif len(toks) > 0 and toks[0] == "setdelay":
                     prepare_delay_ms = int(toks[1])
                     print(f"set sync delay to {prepare_delay_ms} ms")
@@ -254,11 +274,11 @@ async def run():
                 print(e)
                 pass
     finally:
-        await asyncio.gather(buckler_0.disconnect(), buckler_1.disconnect())
         if ch_0 is not None:
             print(f"DDD 0 RTTs: {ch_0.recorded_rtts}")
         if ch_1 is not None:
             print(f"DDD 1 RTTs: {ch_1.recorded_rtts}")
+        await asyncio.gather(ch_0.disconnect(), ch_1.disconnect())
 
 loop = asyncio.get_event_loop()
 loop.run_until_complete(run())

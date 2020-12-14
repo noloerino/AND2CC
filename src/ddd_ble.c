@@ -122,9 +122,7 @@ static ddd_ble_timed_cmd_t disconnect_cmd = {
 };
 
 void ble_evt_disconnected(ble_evt_t const *p_ble_evt) {
-  APP_ERROR_CHECK(
-    nrf_atfifo_clear(ble_cmd_q)
-  );
+  nrf_atfifo_clear(ble_cmd_q);
   APP_ERROR_CHECK(
     nrf_atfifo_alloc_put(ble_cmd_q, &disconnect_cmd, sizeof(disconnect_cmd), NULL)
   );

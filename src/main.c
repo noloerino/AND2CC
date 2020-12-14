@@ -256,9 +256,15 @@ int main(void) {
     } else if (timed_cmd != NULL && timed_cmd->cmd == DDD_BLE_FSM_STOP) {
       printf("Performing ble STOP\n");
       display_write("[ble] STOP", 1);
+      nrf_gpio_pin_set(BUCKLER_LED1);
       speed_left = 0;
       speed_right = 0;
       state = OFF;
+      timed_cmd = NULL;
+      nrf_atfifo_item_free(ble_cmd_q, &ctx);
+    } else if (timed_cmd != NULL && state != DOCKED) {
+      // Swallow command since it's invalid
+      printf("Swalling ble command %d\n", timed_cmd->cmd);
       timed_cmd = NULL;
       nrf_atfifo_item_free(ble_cmd_q, &ctx);
     } else {
