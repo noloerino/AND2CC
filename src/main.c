@@ -189,6 +189,7 @@ int main(void) {
   printf("IMU initialized!\n");
 
   ddd_ble_init();
+  nrf_atfifo_t *ble_cmd_q = get_ble_cmd_q();
 
   kobukiInit();
   printf("Kobuki initialized\n");
@@ -238,6 +239,28 @@ int main(void) {
       nrf_gpio_pin_set(BUCKLER_LED0);
     }
 
+    // Calling get twice will relinquish the item or something
+    int ctx[0];
+    static ddd_ble_timed_cmd_t *timed_cmd = NULL;
+    if (timed_cmd == NULL) {
+      timed_cmd = nrf_atfifo_item_get(ble_cmd_q, (void *) &ctx);
+    }
+
+    if (state == OFF && timed_cmd != NULL && timed_cmd->cmd == DDD_BLE_FSM_GO) {
+      display_write("[ble] GO", 1);
+      pixy_error_check(pixy_set_lamp(pixy, 100, 100), "set lamp", true);
+      state = SPIN;
+      timed_cmd = NULL;
+      nrf_atfifo_item_free(ble_cmd_q, (void *) &ctx);
+    } else if (timed_cmd != NULL && timed_cmd->cmd == DDD_BLE_FSM_STOP) {
+      display_write("[ble] STOP", 1);
+      speed_left = 0;
+      speed_right = 0;
+      state = OFF;
+      timed_cmd = NULL;
+      nrf_atfifo_item_free(ble_cmd_q, (void *) &ctx);
+    }
+
     switch (state) {
       case OFF: {
         display_write("OFF", 0);
@@ -252,16 +275,20 @@ int main(void) {
       }
       case SPIN: {
         display_write("SPIN", 0);
-        speed_left = -60;
-        speed_right = 60;
+        speed_left = 45;
+        speed_right = -75;
         int8_t ec = pixy_get_blocks(pixy, false, CCC_SIG1 | CCC_SIG2, CCC_MAX_BLOCKS);
         if (ec < 0) {
           printf("failed to get blocks with error code %d\n", ec);
         } else {
           //printf("got %d blocks\n", ec);
         }
-        if (docked) {
+        if (read_tilt() > BACKOFF_TILT_TRIGGER_THRESHOLD) {
+          state = BACKOFF;
+        } else if (docked) {
           // Turn on LED1 to indicate that we've at least docked once now
+          speed_left = 0;
+          speed_right = 0;
           nrf_gpio_pin_clear(BUCKLER_LED1);
           pixy_error_check(pixy_set_lamp(pixy, 0, 0), "set lamp", true);
           state = DOCKED;
@@ -317,23 +344,16 @@ int main(void) {
           speed_left = 40;
           speed_right = 40;
         } else {
-          printf("BACKOFF -> TARGET\n");
-          state = TARGET;
+          printf("BACKOFF -> SPIN\n");
+          state = SPIN;
         }
         break;
       }
       case DOCKED: {
         display_write(DOCKED_MSG, 0);
-        nrf_atfifo_t *ble_cmd_q = get_ble_cmd_q();
         // Check the command queue for a message
         const int16_t DRV_SPD = 70;
         const int16_t TURN_SPD = 200;
-        int ctx[0];
-        // Calling get twice will relinquish the item or something
-        static ddd_ble_timed_cmd_t *timed_cmd = NULL;
-        if (timed_cmd == NULL) {
-          timed_cmd = nrf_atfifo_item_get(ble_cmd_q, (void *) &ctx);
-        }
         // Poll until expiration
         if (timed_cmd != NULL && timed_cmd->target_ms <= ddd_ble_now_ms()) {
           printf("performing job scheduled for %lu\n", timed_cmd->target_ms);

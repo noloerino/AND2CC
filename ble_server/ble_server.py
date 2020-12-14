@@ -40,6 +40,8 @@ CMD_LUT = {
     "f": 5,
     "b": 6,
     "z": 7,
+    "go": 8,
+    "stop": 9,
 }
 
 start_ms = int(time.time() * 1000)
@@ -52,7 +54,6 @@ class Channels:
     def __init__(self, i, buckler, chs):
         self.id = i
         self.buckler = buckler
-        print(f"handles: {chs}")
         self.req_ch = chs[0] 
         self.resp_ch = chs[1]
         self.nosync_ch = chs[2]
@@ -249,7 +250,8 @@ async def run():
                     print(f"invalid command: {cmd}")
             except KeyboardInterrupt:
                 break
-            except:
+            except e:
+                print(e)
                 pass
     finally:
         await asyncio.gather(buckler_0.disconnect(), buckler_1.disconnect())

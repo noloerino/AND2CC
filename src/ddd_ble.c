@@ -4,6 +4,7 @@
 #include "nrf_atfifo.h"
 
 #include "simple_ble.h"
+#include "display.h"
 #include "buckler.h"
 
 #include "ddd_ble.h"
@@ -120,13 +121,17 @@ static ddd_ble_timed_cmd_t disconnect_cmd = {
   .target_ms = 0
 };
 
-void ble_evt_disconnected(ble_evt_t const*p_ble_evt) {
+void ble_evt_disconnected(ble_evt_t const *p_ble_evt) {
   APP_ERROR_CHECK(
     nrf_atfifo_clear(ble_cmd_q)
   );
   APP_ERROR_CHECK(
     nrf_atfifo_alloc_put(ble_cmd_q, &disconnect_cmd, sizeof(disconnect_cmd), NULL)
   );
+}
+
+void ble_evt_connected(ble_evt_t const *p_ble_evt) {
+  display_write("[ble] Connected!", 1);
 }
 
 void empty_callback(void *p_context) { }
