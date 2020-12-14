@@ -38,6 +38,13 @@
 #define BACKOFF_TILT_TRIGGER_THRESHOLD 10 // degrees
 #define BACKOFF_TILT_RETURN_THRESHHOLD 5 // degrees, prevents oscillation
 
+// Points in the direction of forward travel
+#if DDD_ROBOT_ID == 0
+  #define DOCKED_MSG "<- DOCKED"
+#else
+  #define DOCKED_MSG "DOCKED ->"
+#endif
+
 #define DOCK_POWER NRF_GPIO_PIN_MAP(0, 3)
 #define DOCK_DETECT NRF_GPIO_PIN_MAP(0, 4)
 
@@ -181,6 +188,8 @@ int main(void) {
   lsm9ds1_init(&twi_mngr_instance);
   printf("IMU initialized!\n");
 
+  ddd_ble_init();
+
   kobukiInit();
   printf("Kobuki initialized\n");
 
@@ -208,12 +217,6 @@ int main(void) {
   nrf_gpio_cfg_output(DOCK_POWER);
   nrf_gpio_pin_clear(DOCK_POWER);
   nrf_gpio_cfg_input(DOCK_DETECT, NRF_GPIO_PIN_PULLUP);
-
-  // {
-  //   // For testing BLE
-  //   state = DOCKED;
-  //   ddd_ble_init();
-  // }
 
   while(true) {
     kobukiSensorPoll(&sensors);
@@ -257,11 +260,19 @@ int main(void) {
         } else {
           //printf("got %d blocks\n", ec);
         }
-        pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks, pixy->frame_width, pixy->frame_height);
-        if (block != NULL) {
-          state = TARGET;
-          target_fail_count = 0;
-          printf("SPIN -> TARGET\n");
+        if (docked) {
+          // Turn on LED1 to indicate that we've at least docked once now
+          nrf_gpio_pin_clear(BUCKLER_LED1);
+          pixy_error_check(pixy_set_lamp(pixy, 0, 0), "set lamp", true);
+          state = DOCKED;
+          printf("SPIN -> DOCKED\n");
+        } else {
+          pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks, pixy->frame_width, pixy->frame_height);
+          if (block != NULL) {
+            state = TARGET;
+            target_fail_count = 0;
+            printf("SPIN -> TARGET\n");
+          }
         }
         break;
       }
@@ -277,7 +288,6 @@ int main(void) {
           // Turn on LED1 to indicate that we've at least docked once now
           nrf_gpio_pin_clear(BUCKLER_LED1);
           pixy_error_check(pixy_set_lamp(pixy, 0, 0), "set lamp", true);
-          ddd_ble_init();
           state = DOCKED;
           printf("TARGET -> DOCKED\n");
         } else if (block != NULL) {
@@ -313,7 +323,7 @@ int main(void) {
         break;
       }
       case DOCKED: {
-        display_write("DOCKED", 0);
+        display_write(DOCKED_MSG, 0);
         nrf_atfifo_t *ble_cmd_q = get_ble_cmd_q();
         // Check the command queue for a message
         const int16_t DRV_SPD = 70;

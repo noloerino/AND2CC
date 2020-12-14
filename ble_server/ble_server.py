@@ -52,6 +52,7 @@ class Channels:
     def __init__(self, i, buckler, chs):
         self.id = i
         self.buckler = buckler
+        print(f"handles: {chs}")
         self.req_ch = chs[0] 
         self.resp_ch = chs[1]
         self.nosync_ch = chs[2]
@@ -185,6 +186,8 @@ async def run():
         if buckler_0 is None or buckler_1 is None:
             print("retrying discovery...")
 
+    ch_0 = None
+    ch_1 = None
     try:
         print("DDDs found, verifying characteristics...")
         channel_tuples = await asyncio.gather(
@@ -250,8 +253,10 @@ async def run():
                 pass
     finally:
         await asyncio.gather(buckler_0.disconnect(), buckler_1.disconnect())
-        print(f"DDD 0 RTTs: {ch_0.recorded_rtts}")
-        print(f"DDD 1 RTTs: {ch_1.recorded_rtts}")
+        if ch_0 is not None:
+            print(f"DDD 0 RTTs: {ch_0.recorded_rtts}")
+        if ch_1 is not None:
+            print(f"DDD 1 RTTs: {ch_1.recorded_rtts}")
 
 loop = asyncio.get_event_loop()
 loop.run_until_complete(run())
