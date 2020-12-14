@@ -326,7 +326,7 @@ int main(void) {
             printf("TARGET -> DOCKED\n");
           } else if (block != NULL) {
             // Slow down when nearer for improved control
-            speed_target = block->m_width > pixy->frame_width
+            speed_target = block->m_width > pixy->frame_width / 2
               ? 2 * SPEED_TARGET_BASE / 3
               : SPEED_TARGET_BASE;
             const float new_angle = ((M_PI / 3.0) / pixy->frame_width) * block->m_x - (M_PI / 6.0);

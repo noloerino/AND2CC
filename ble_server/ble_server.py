@@ -227,13 +227,13 @@ async def run():
                 if cmd in ("q", "quit", "exit"):
                     print("quitting")
                     break
-                elif cmd == "nosync":
+                elif cmd in ("ns", "nosync"):
                     print("disabled sync")
                     use_sync = False
                 elif cmd == "sync":
                     print(f"enabled sync (delay {prepare_delay_ms} ms)")
                     use_sync = True
-                elif cmd == "reset":
+                elif cmd in ("rc", "reconnect", "reset"):
                     await asyncio.gather(ch_0.try_reconnect(), ch_1.try_reconnect())
                 elif len(toks) > 0 and toks[0] == "setdelay":
                     prepare_delay_ms = int(toks[1])
