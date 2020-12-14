@@ -240,7 +240,7 @@ int main(void) {
     }
 
     // Calling get twice will relinquish the item or something
-    int ctx[0];
+    static int ctx[0];
     static ddd_ble_timed_cmd_t *timed_cmd = NULL;
     if (timed_cmd == NULL) {
       timed_cmd = nrf_atfifo_item_get(ble_cmd_q, (void *) &ctx);
@@ -259,180 +259,180 @@ int main(void) {
       state = OFF;
       timed_cmd = NULL;
       nrf_atfifo_item_free(ble_cmd_q, (void *) &ctx);
-    }
-
-    switch (state) {
-      case OFF: {
-        display_write("OFF", 0);
-        speed_left = 0;
-        speed_right = 0;
-        
-        if (is_button_pressed(&sensors)) {
-          state = SPIN;
-          printf("OFF -> SPIN\n");
-        }
-        break;
-      }
-      case SPIN: {
-        display_write("SPIN", 0);
-        speed_left = 45;
-        speed_right = -75;
-        int8_t ec = pixy_get_blocks(pixy, false, CCC_SIG1 | CCC_SIG2, CCC_MAX_BLOCKS);
-        if (ec < 0) {
-          printf("failed to get blocks with error code %d\n", ec);
-        } else {
-          //printf("got %d blocks\n", ec);
-        }
-        if (read_tilt() > BACKOFF_TILT_TRIGGER_THRESHOLD) {
-          state = BACKOFF;
-        } else if (docked) {
-          // Turn on LED1 to indicate that we've at least docked once now
+    } else {
+      switch (state) {
+        case OFF: {
+          display_write("OFF", 0);
           speed_left = 0;
           speed_right = 0;
-          nrf_gpio_pin_clear(BUCKLER_LED1);
-          pixy_error_check(pixy_set_lamp(pixy, 0, 0), "set lamp", true);
-          state = DOCKED;
-          printf("SPIN -> DOCKED\n");
-        } else {
-          pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks, pixy->frame_width, pixy->frame_height);
-          if (block != NULL) {
-            state = TARGET;
-            target_fail_count = 0;
-            printf("SPIN -> TARGET\n");
-          }
-        }
-        break;
-      }
-      case TARGET: {
-        display_write("TARGET", 0);
-        pixy_get_blocks(pixy, false, CCC_SIG1 | CCC_SIG2, CCC_MAX_BLOCKS);
-        pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks, pixy->frame_width, pixy->frame_height);
-        if (read_tilt() > BACKOFF_TILT_TRIGGER_THRESHOLD) {
-          state = BACKOFF;
-        } else if (docked) {
-          speed_left = 0;
-          speed_right = 0;
-          // Turn on LED1 to indicate that we've at least docked once now
-          nrf_gpio_pin_clear(BUCKLER_LED1);
-          pixy_error_check(pixy_set_lamp(pixy, 0, 0), "set lamp", true);
-          state = DOCKED;
-          printf("TARGET -> DOCKED\n");
-        } else if (block != NULL) {
-          // Slow down when nearer for improved control
-          speed_target = block->m_width > pixy->frame_width
-            ? 2 * SPEED_TARGET_BASE / 3
-            : SPEED_TARGET_BASE;
-          const float new_angle = ((M_PI / 3.0) / pixy->frame_width) * block->m_x - (M_PI / 6.0);
-          angle = ANGLE_DECAY * angle + (1 - ANGLE_DECAY) * new_angle;
-          const float delta = (CHASSIS_BASE_WIDTH / 2.0) * ANGLE_K_P * angle;
-          speed_left = -speed_target + delta;
-          speed_right = -speed_target - delta; 
-          target_fail_count = 0;
-        } else {
-          ++target_fail_count;
-          if (target_fail_count > TARGET_FAIL_COUNT_THRESHOLD) {
+          
+          if (is_button_pressed(&sensors)) {
             state = SPIN;
-            printf("TARGET -> SPIN\n");
+            printf("OFF -> SPIN\n");
           }
+          break;
         }
-        break;
-      }
-      case BACKOFF: {
-        display_write("BACKOFF", 0);
-        if (read_tilt() > BACKOFF_TILT_RETURN_THRESHHOLD) {
-          // For both robots, backing off entails going "forward"
-          speed_left = 40;
-          speed_right = 40;
-        } else {
-          printf("BACKOFF -> SPIN\n");
-          state = SPIN;
-        }
-        break;
-      }
-      case DOCKED: {
-        display_write(DOCKED_MSG, 0);
-        // Check the command queue for a message
-        const int16_t DRV_SPD = 70;
-        const int16_t TURN_SPD = 200;
-        // Poll until expiration
-        if (timed_cmd != NULL && timed_cmd->target_ms <= ddd_ble_now_ms()) {
-          printf("performing job scheduled for %lu\n", timed_cmd->target_ms);
-          ddd_ble_cmd_t cmd = timed_cmd->cmd;
-          timed_cmd = NULL;
-          switch (cmd) {
-            case DDD_BLE_LED_ON: {
-              display_write("[ble] LED ON", 1);
-              nrf_gpio_pin_clear(BUCKLER_LED2);
-              break;
-            }
-            case DDD_BLE_LED_OFF: {
-              display_write("[ble] LED OFF", 1);
-              nrf_gpio_pin_set(BUCKLER_LED2);
-              break;
-            }
-            case DDD_BLE_DRV_LEFT: {
-              display_write("[ble] LEFT", 1);
-              speed_left = -TURN_SPD;
-              speed_right = TURN_SPD;
-              break;
-            }
-            case DDD_BLE_DRV_RIGHT: {
-              display_write("[ble] RIGHT", 1);
-              speed_left = TURN_SPD;
-              speed_right = -TURN_SPD;
-              break;
-            }
-            case DDD_BLE_DRV_FORWARD: {
-              display_write("[ble] FORWARD", 1);
-              if (DDD_ROBOT_ID == 0) {
-                speed_left = DRV_SPD;
-                speed_right = DRV_SPD;
-              } else {
-                speed_left = -DRV_SPD;
-                speed_right = -DRV_SPD;
-              }
-              break;
-            }
-            case DDD_BLE_DRV_BACKWARD: {
-              display_write("[ble] BACKWARD", 1);
-              if (DDD_ROBOT_ID == 0) {
-                speed_left = -DRV_SPD;
-                speed_right = -DRV_SPD;
-              } else {
-                speed_left = DRV_SPD;
-                speed_right = DRV_SPD;
-              }
-              break; 
-            }
-            case DDD_BLE_DRV_ZERO: {
-              display_write("[ble] ZERO", 1);
-              speed_left = 0.0;
-              speed_right = 0.0;
-              break;
-            }
-            case DDD_BLE_DISCONNECT: {
-              display_write("[ble] DISCONNECTED", 1);
-              speed_left = 0.0;
-              speed_right = 0.0;
-              break;
-            }
-            default:
-              printf("Unhandled command %d\n", cmd);
-              display_write("[ble] INVALID", 1);
-              speed_left = 0.0;
-              speed_right = 0.0;
-              break;
+        case SPIN: {
+          display_write("SPIN", 0);
+          speed_left = 45;
+          speed_right = -75;
+          int8_t ec = pixy_get_blocks(pixy, false, CCC_SIG1 | CCC_SIG2, CCC_MAX_BLOCKS);
+          if (ec < 0) {
+            printf("failed to get blocks with error code %d\n", ec);
+          } else {
+            //printf("got %d blocks\n", ec);
           }
-          nrf_atfifo_item_free(ble_cmd_q, (void *) &ctx);
+          if (read_tilt() > BACKOFF_TILT_TRIGGER_THRESHOLD) {
+            state = BACKOFF;
+          } else if (docked) {
+            // Turn on LED1 to indicate that we've at least docked once now
+            speed_left = 0;
+            speed_right = 0;
+            nrf_gpio_pin_clear(BUCKLER_LED1);
+            pixy_error_check(pixy_set_lamp(pixy, 0, 0), "set lamp", true);
+            state = DOCKED;
+            printf("SPIN -> DOCKED\n");
+          } else {
+            pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks, pixy->frame_width, pixy->frame_height);
+            if (block != NULL) {
+              state = TARGET;
+              target_fail_count = 0;
+              printf("SPIN -> TARGET\n");
+            }
+          }
+          break;
         }
-        // else if (timed_cmd != NULL) {
-        //   printf("waiting for %lu, now is %lu\n", timed_cmd->target_ms, ddd_ble_now_ms());
-        // }
-        break;
-      }
-      default: {
-        display_write("INVALID STATE", 0);
-        printf("error: default state\n");
+        case TARGET: {
+          display_write("TARGET", 0);
+          pixy_get_blocks(pixy, false, CCC_SIG1 | CCC_SIG2, CCC_MAX_BLOCKS);
+          pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks, pixy->frame_width, pixy->frame_height);
+          if (read_tilt() > BACKOFF_TILT_TRIGGER_THRESHOLD) {
+            state = BACKOFF;
+          } else if (docked) {
+            speed_left = 0;
+            speed_right = 0;
+            // Turn on LED1 to indicate that we've at least docked once now
+            nrf_gpio_pin_clear(BUCKLER_LED1);
+            pixy_error_check(pixy_set_lamp(pixy, 0, 0), "set lamp", true);
+            state = DOCKED;
+            printf("TARGET -> DOCKED\n");
+          } else if (block != NULL) {
+            // Slow down when nearer for improved control
+            speed_target = block->m_width > pixy->frame_width
+              ? 2 * SPEED_TARGET_BASE / 3
+              : SPEED_TARGET_BASE;
+            const float new_angle = ((M_PI / 3.0) / pixy->frame_width) * block->m_x - (M_PI / 6.0);
+            angle = ANGLE_DECAY * angle + (1 - ANGLE_DECAY) * new_angle;
+            const float delta = (CHASSIS_BASE_WIDTH / 2.0) * ANGLE_K_P * angle;
+            speed_left = -speed_target + delta;
+            speed_right = -speed_target - delta; 
+            target_fail_count = 0;
+          } else {
+            ++target_fail_count;
+            if (target_fail_count > TARGET_FAIL_COUNT_THRESHOLD) {
+              state = SPIN;
+              printf("TARGET -> SPIN\n");
+            }
+          }
+          break;
+        }
+        case BACKOFF: {
+          display_write("BACKOFF", 0);
+          if (read_tilt() > BACKOFF_TILT_RETURN_THRESHHOLD) {
+            // For both robots, backing off entails going "forward"
+            speed_left = 40;
+            speed_right = 40;
+          } else {
+            printf("BACKOFF -> SPIN\n");
+            state = SPIN;
+          }
+          break;
+        }
+        case DOCKED: {
+          display_write(DOCKED_MSG, 0);
+          // Check the command queue for a message
+          const int16_t DRV_SPD = 70;
+          const int16_t TURN_SPD = 200;
+          // Poll until expiration
+          if (timed_cmd != NULL && timed_cmd->target_ms <= ddd_ble_now_ms()) {
+            printf("performing job scheduled for %lu\n", timed_cmd->target_ms);
+            ddd_ble_cmd_t cmd = timed_cmd->cmd;
+            switch (cmd) {
+              case DDD_BLE_LED_ON: {
+                display_write("[ble] LED ON", 1);
+                nrf_gpio_pin_clear(BUCKLER_LED2);
+                break;
+              }
+              case DDD_BLE_LED_OFF: {
+                display_write("[ble] LED OFF", 1);
+                nrf_gpio_pin_set(BUCKLER_LED2);
+                break;
+              }
+              case DDD_BLE_DRV_LEFT: {
+                display_write("[ble] LEFT", 1);
+                speed_left = -TURN_SPD;
+                speed_right = TURN_SPD;
+                break;
+              }
+              case DDD_BLE_DRV_RIGHT: {
+                display_write("[ble] RIGHT", 1);
+                speed_left = TURN_SPD;
+                speed_right = -TURN_SPD;
+                break;
+              }
+              case DDD_BLE_DRV_FORWARD: {
+                display_write("[ble] FORWARD", 1);
+                if (DDD_ROBOT_ID == 0) {
+                  speed_left = DRV_SPD;
+                  speed_right = DRV_SPD;
+                } else {
+                  speed_left = -DRV_SPD;
+                  speed_right = -DRV_SPD;
+                }
+                break;
+              }
+              case DDD_BLE_DRV_BACKWARD: {
+                display_write("[ble] BACKWARD", 1);
+                if (DDD_ROBOT_ID == 0) {
+                  speed_left = -DRV_SPD;
+                  speed_right = -DRV_SPD;
+                } else {
+                  speed_left = DRV_SPD;
+                  speed_right = DRV_SPD;
+                }
+                break; 
+              }
+              case DDD_BLE_DRV_ZERO: {
+                display_write("[ble] ZERO", 1);
+                speed_left = 0.0;
+                speed_right = 0.0;
+                break;
+              }
+              case DDD_BLE_DISCONNECT: {
+                display_write("[ble] DISCONNECTED", 1);
+                speed_left = 0.0;
+                speed_right = 0.0;
+                break;
+              }
+              default:
+                printf("Unhandled command %d\n", cmd);
+                display_write("[ble] INVALID", 1);
+                speed_left = 0.0;
+                speed_right = 0.0;
+                break;
+            }
+            timed_cmd = NULL;
+            nrf_atfifo_item_free(ble_cmd_q, (void *) &ctx);
+          }
+          // else if (timed_cmd != NULL) {
+          //   printf("waiting for %lu, now is %lu\n", timed_cmd->target_ms, ddd_ble_now_ms());
+          // }
+          break;
+        }
+        default: {
+          display_write("INVALID STATE", 0);
+          printf("error: default state\n");
+        }
       }
     }
     nrf_delay_ms(10);

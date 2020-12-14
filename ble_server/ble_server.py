@@ -250,7 +250,7 @@ async def run():
                     print(f"invalid command: {cmd}")
             except KeyboardInterrupt:
                 break
-            except e:
+            except Exception as e:
                 print(e)
                 pass
     finally:

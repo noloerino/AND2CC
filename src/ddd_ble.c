@@ -161,6 +161,6 @@ void ddd_ble_init() {
     );
     simple_ble_adv_only_name();
     has_ble_init = true;
-    printf("Initialized DDD BLE\n");
+    printf("Initialized DDD BLE " DDD_ROBOT_ID_STR "\n");
   }
 }
