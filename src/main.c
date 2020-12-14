@@ -240,25 +240,27 @@ int main(void) {
     }
 
     // Calling get twice will relinquish the item or something
-    static int ctx[0];
+    nrf_atfifo_item_get_t ctx;
     static ddd_ble_timed_cmd_t *timed_cmd = NULL;
     if (timed_cmd == NULL) {
-      timed_cmd = nrf_atfifo_item_get(ble_cmd_q, (void *) &ctx);
+      timed_cmd = nrf_atfifo_item_get(ble_cmd_q, &ctx);
     }
 
-    if (state == OFF && timed_cmd != NULL && timed_cmd->cmd == DDD_BLE_FSM_GO) {
+    if (timed_cmd != NULL && timed_cmd->cmd == DDD_BLE_FSM_GO) {
+      printf("Performing ble GO\n");
       display_write("[ble] GO", 1);
       pixy_error_check(pixy_set_lamp(pixy, 100, 100), "set lamp", true);
       state = SPIN;
       timed_cmd = NULL;
-      nrf_atfifo_item_free(ble_cmd_q, (void *) &ctx);
+      nrf_atfifo_item_free(ble_cmd_q, &ctx);
     } else if (timed_cmd != NULL && timed_cmd->cmd == DDD_BLE_FSM_STOP) {
+      printf("Performing ble STOP\n");
       display_write("[ble] STOP", 1);
       speed_left = 0;
       speed_right = 0;
       state = OFF;
       timed_cmd = NULL;
-      nrf_atfifo_item_free(ble_cmd_q, (void *) &ctx);
+      nrf_atfifo_item_free(ble_cmd_q, &ctx);
     } else {
       switch (state) {
         case OFF: {
@@ -422,7 +424,7 @@ int main(void) {
                 break;
             }
             timed_cmd = NULL;
-            nrf_atfifo_item_free(ble_cmd_q, (void *) &ctx);
+            nrf_atfifo_item_free(ble_cmd_q, &ctx);
           }
           // else if (timed_cmd != NULL) {
           //   printf("waiting for %lu, now is %lu\n", timed_cmd->target_ms, ddd_ble_now_ms());
