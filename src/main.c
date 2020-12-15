@@ -368,7 +368,6 @@ int main(void) {
           display_write(DOCKED_MSG, 0);
           // Check the command queue for a message
           const int16_t DRV_SPD = 70;
-          const int16_t TURN_SPD = 200;
           // Poll until expiration
           if (timed_cmd != NULL && timed_cmd->target_ms <= ddd_ble_now_ms()) {
             ddd_ble_cmd_t cmd = timed_cmd->cmd;
@@ -386,14 +385,14 @@ int main(void) {
               }
               case DDD_BLE_DRV_LEFT: {
                 display_write("[ble] LEFT", 1);
-                speed_left = -TURN_SPD;
-                speed_right = TURN_SPD;
+                speed_left = -160;
+                speed_right = 100;
                 break;
               }
               case DDD_BLE_DRV_RIGHT: {
                 display_write("[ble] RIGHT", 1);
-                speed_left = TURN_SPD;
-                speed_right = -TURN_SPD;
+                speed_left = 100;
+                speed_right = -160;
                 break;
               }
               case DDD_BLE_DRV_FORWARD: {
