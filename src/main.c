@@ -224,6 +224,15 @@ int main(void) {
   nrf_gpio_pin_clear(DOCK_POWER);
   nrf_gpio_cfg_input(DOCK_DETECT, NRF_GPIO_PIN_PULLUP);
 
+  // Macro to do a bunch of common initialization
+  #define TO_DOCKED(from) \
+    speed_left = 0; \
+    speed_right = 0; \
+    nrf_gpio_pin_clear(BUCKLER_LED1); \
+    pixy_error_check(pixy_set_lamp(pixy, 0, 0), "set lamp", true); \
+    state = DOCKED; \
+    printf(from " -> DOCKED\n");
+
   while(true) {
     kobukiSensorPoll(&sensors);
 
@@ -252,14 +261,14 @@ int main(void) {
     }
 
     if (timed_cmd != NULL && timed_cmd->cmd == DDD_BLE_FSM_GO) {
-      printf("Performing BLE GO\n");
+      printf("performing BLE GO\n");
       display_write("[ble] GO", 1);
       pixy_error_check(pixy_set_lamp(pixy, 100, 100), "set lamp", true);
       state = SPIN;
       timed_cmd = NULL;
       nrf_atfifo_item_free(ble_cmd_q, &ctx);
     } else if (timed_cmd != NULL && timed_cmd->cmd == DDD_BLE_FSM_STOP) {
-      printf("Performing BLE STOP\n");
+      printf("performing BLE STOP\n");
       display_write("[ble] STOP", 1);
       nrf_gpio_pin_set(BUCKLER_LED1);
       speed_left = 0;
@@ -267,19 +276,23 @@ int main(void) {
       state = OFF;
       timed_cmd = NULL;
       nrf_atfifo_item_free(ble_cmd_q, &ctx);
-    } else if (timed_cmd != NULL && state != DOCKED && timed_cmd->cmd == DDD_BLE_DISCONNECT) {
-      printf("BLE disconnected outside docking \n");
-      display_write("[ble] DISCONNECTED", 1);
-      nrf_atfifo_item_free(ble_cmd_q, &ctx);
     } else if (timed_cmd != NULL && state != DOCKED) {
-      // Swallow command since it's invalid
-      printf("Swallowing ble command %d\n", timed_cmd->cmd);
+      if (timed_cmd->cmd == DDD_BLE_DISCONNECT) {
+        printf("ble disconnected outside docking \n");
+        display_write("[ble] DISCONNECTED", 1);
+      } else if (timed_cmd->cmd == DDD_BLE_FSM_TODOCKED) {
+        printf("moving to docked state by ble request\n");
+        TO_DOCKED("<any>");
+      } else {
+        // Swallow command since it's invalid outside DOCKED state
+        printf("swallowing ble command %d\n", timed_cmd->cmd);
+      }
       timed_cmd = NULL;
       nrf_atfifo_item_free(ble_cmd_q, &ctx);
     } else {
       switch (state) {
         case OFF: {
-          display_write("OFF", 0);
+          display_write("OFF " DDD_ROBOT_ID_STR, 0);
           speed_left = 0;
           speed_right = 0;
           
@@ -303,13 +316,7 @@ int main(void) {
             state = BACKOFF;
             printf("SPIN -> BACKOFF\n");
           } else if (docked) {
-            // Turn on LED1 to indicate that we've at least docked once now
-            speed_left = 0;
-            speed_right = 0;
-            nrf_gpio_pin_clear(BUCKLER_LED1);
-            pixy_error_check(pixy_set_lamp(pixy, 0, 0), "set lamp", true);
-            state = DOCKED;
-            printf("SPIN -> DOCKED\n");
+            TO_DOCKED("SPIN");
           } else {
             pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks, pixy->frame_width, pixy->frame_height);
             if (block != NULL) {
@@ -328,13 +335,7 @@ int main(void) {
             state = BACKOFF;
             printf("TARGET -> BACKOFF\n");
           } else if (docked) {
-            speed_left = 0;
-            speed_right = 0;
-            // Turn on LED1 to indicate that we've at least docked once now
-            nrf_gpio_pin_clear(BUCKLER_LED1);
-            pixy_error_check(pixy_set_lamp(pixy, 0, 0), "set lamp", true);
-            state = DOCKED;
-            printf("TARGET -> DOCKED\n");
+            TO_DOCKED("TARGET");
           } else if (block != NULL) {
             const float new_angle = ((M_PI / 3.0) / pixy->frame_width) * block->m_x - (M_PI / 6.0);
             angle = ANGLE_DECAY * angle + (1 - ANGLE_DECAY) * new_angle;
@@ -430,7 +431,7 @@ int main(void) {
                 break;
               }
               default:
-                printf("Unhandled command %d\n", cmd);
+                printf("unhandled command %d\n", cmd);
                 display_write("[ble] INVALID", 1);
                 speed_left = 0.0;
                 speed_right = 0.0;

@@ -27,6 +27,7 @@ typedef enum {
   DDD_BLE_DRV_ZERO,
   DDD_BLE_FSM_GO,
   DDD_BLE_FSM_STOP,
+  DDD_BLE_FSM_TODOCKED,
   DDD_BLE_DISCONNECT,
 } ddd_ble_cmd_t;
 

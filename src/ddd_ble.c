@@ -70,7 +70,9 @@ void ble_evt_write(ble_evt_t const *p_ble_evt) {
       }
       case SYNC_2PC_CMD_COMMIT: {
         // Target time is of the central device, so we add the error
-        uint32_t when = target_time + (int16_t) ble_req.ts.e;
+        uint32_t when = ble_req.ts.e > 0
+          ? target_time + (uint32_t) ble_req.ts.e
+          : target_time - (uint32_t) (-ble_req.ts.e);
         uint32_t now = ddd_ble_now_ms();
         ddd_ble_timed_cmd_t timed_cmd;
         timed_cmd.cmd = prepared_cmd;

@@ -42,6 +42,7 @@ CMD_LUT = {
     "z": 7,
     "go": 8,
     "stop": 9,
+    "d": 10,
 }
 
 start_ms = int(time.time() * 1000)
