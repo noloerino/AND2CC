@@ -252,20 +252,24 @@ int main(void) {
     }
 
     if (timed_cmd != NULL && timed_cmd->cmd == DDD_BLE_FSM_GO) {
-      printf("Performing ble GO\n");
+      printf("Performing BLE GO\n");
       display_write("[ble] GO", 1);
       pixy_error_check(pixy_set_lamp(pixy, 100, 100), "set lamp", true);
       state = SPIN;
       timed_cmd = NULL;
       nrf_atfifo_item_free(ble_cmd_q, &ctx);
     } else if (timed_cmd != NULL && timed_cmd->cmd == DDD_BLE_FSM_STOP) {
-      printf("Performing ble STOP\n");
+      printf("Performing BLE STOP\n");
       display_write("[ble] STOP", 1);
       nrf_gpio_pin_set(BUCKLER_LED1);
       speed_left = 0;
       speed_right = 0;
       state = OFF;
       timed_cmd = NULL;
+      nrf_atfifo_item_free(ble_cmd_q, &ctx);
+    } else if (timed_cmd != NULL && state != DOCKED && timed_cmd->cmd == DDD_BLE_DISCONNECT) {
+      printf("BLE disconnected outside docking \n");
+      display_write("[ble] DISCONNECTED", 1);
       nrf_atfifo_item_free(ble_cmd_q, &ctx);
     } else if (timed_cmd != NULL && state != DOCKED) {
       // Swallow command since it's invalid
@@ -297,6 +301,7 @@ int main(void) {
           }
           if (read_tilt() > BACKOFF_TILT_TRIGGER_THRESHOLD) {
             state = BACKOFF;
+            printf("SPIN -> BACKOFF\n");
           } else if (docked) {
             // Turn on LED1 to indicate that we've at least docked once now
             speed_left = 0;
@@ -321,6 +326,7 @@ int main(void) {
           pixy_block_t *block = select_block(pixy->blocks, pixy->num_blocks, pixy->frame_width, pixy->frame_height);
           if (read_tilt() > BACKOFF_TILT_TRIGGER_THRESHOLD) {
             state = BACKOFF;
+            printf("TARGET -> BACKOFF\n");
           } else if (docked) {
             speed_left = 0;
             speed_right = 0;
@@ -352,8 +358,8 @@ int main(void) {
             speed_left = 40;
             speed_right = 40;
           } else {
-            printf("BACKOFF -> SPIN\n");
             state = SPIN;
+            printf("BACKOFF -> SPIN\n");
           }
           break;
         }
@@ -364,8 +370,8 @@ int main(void) {
           const int16_t TURN_SPD = 200;
           // Poll until expiration
           if (timed_cmd != NULL && timed_cmd->target_ms <= ddd_ble_now_ms()) {
-            printf("performing job scheduled for %lu\n", timed_cmd->target_ms);
             ddd_ble_cmd_t cmd = timed_cmd->cmd;
+            printf("performing cmd %d, scheduled for %lu\n", cmd, timed_cmd->target_ms);
             switch (cmd) {
               case DDD_BLE_LED_ON: {
                 display_write("[ble] LED ON", 1);
@@ -440,7 +446,7 @@ int main(void) {
         }
         default: {
           display_write("INVALID STATE", 0);
-          printf("error: default state\n");
+          printf("error: invalid top-level\n");
         }
       }
     }
